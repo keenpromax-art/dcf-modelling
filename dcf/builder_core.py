@@ -47,7 +47,7 @@ def pv(c):
 
 
 wb = Workbook()
-NAMES = ['Cover', 'Assumptions', 'Bridge', 'Segments', 'Macro_Scenarios', 'IS', 'BS', 'CFS',
+NAMES = ['Cover', 'Assumptions', 'Bridge', 'Segments', 'SOTP', 'Macro_Scenarios', 'IS', 'BS', 'CFS',
          'WACC', 'DCF_Valuation', 'Comps', 'Scenario_Valuation', 'Sensitivity_Analysis',
          'Precedents', 'Risks', 'Controls', 'Version_Log']
 wb.active.title = NAMES[0]
@@ -1504,6 +1504,36 @@ barb.legend = None
 wsBr.add_chart(barb, 'A13')
 wsBr.freeze_panes = 'C6'
 # =====================================================================================
+# SOTP - sum-of-the-parts cross-check (segment EBITDA x assigned multiples)
+# =====================================================================================
+wsSo = WS['SOTP']
+title(wsSo, 'SOTP - Sum-of-the-Parts Cross-Check')
+put(wsSo, 'A2', '="Segment EBITDA from Segments tab; assign EV/EBITDA multiples (yellow). Cross-check against consolidated DCF."', kind='calc', italic=True)
+band(wsSo, 4, 'SEGMENT VALUATION', c2='H')
+for c, t in zip('ABCD', ['Segment', 'FY30E EBITDA', 'EV/EBITDA (input)', 'Segment EV']):
+    put(wsSo, f'{c}5', t, kind='label', bold=True)
+for i in range(6):
+    r = 6 + i
+    put(wsSo, f'A{r}', f'=Segments!A{41 + i}', None, color=BLACK)
+    put(wsSo, f'B{r}', f'=Segments!J{41 + i}', F_NUM)
+    put(wsSo, f'C{r}', 12.0, F_X, kind='input', fill=YEL)
+    put(wsSo, f'D{r}', f'=B{r}*C{r}', F_NUM)
+lab(wsSo, 13, 'Total implied enterprise value', 'units', bold=True)
+put(wsSo, 'D13', '=SUM(D6:D11)', F_NUM, bold=True)
+lab(wsSo, 14, '(+) Cash - debt - preferred - minority', 'units')
+put(wsSo, 'D14', '=Assumptions!C25-Assumptions!C24-Assumptions!C27-Assumptions!C26', F_NUM)
+lab(wsSo, 15, 'Implied equity value', 'units', bold=True)
+put(wsSo, 'D15', '=D13+D14', F_NUM, bold=True)
+lab(wsSo, 16, 'Diluted shares (FY26E rolling)', 'mm')
+put(wsSo, 'D16', '=DCF_Valuation!$F$104', F_NUM)
+lab(wsSo, 17, 'Implied value per share (SOTP)', CUR, bold=True)
+put(wsSo, 'D17', '=D15/D16', F_PX, bold=True)
+lab(wsSo, 18, 'Cross-check: SOTP vs blended DCF per share', '%')
+put(wsSo, 'D18', '=D17/DCF_Valuation!$E$66-1', F_PCT)
+lab(wsSo, 20, 'Note: multiples are placeholders (12.0x). Replace per segment with peer / precedent-based multiples.', None, italic=True)
+wsSo.freeze_panes = 'B6'
+
+# =====================================================================================
 # 1. COVER - EQUITY RESEARCH SUMMARY (sell-side format)
 # =====================================================================================
 wsB = WS['Cover']
@@ -1615,7 +1645,45 @@ for r in range(54, 66):
     put(wsB, f'C{r}', f'=DCF_Valuation!C{src_r}', None, bold=True, align='right')
 
 # ---- chart data + charts
-CD = 68
+band(wsB, 63, 'TARGET PRICE SCORECARD (weights are editable; must total 100%)', c2='H')
+for c, t in zip('CDE', ['Implied value', 'Weight', 'Contribution']):
+    put(wsB, f'{c}64', t, kind='label', bold=True, align='right')
+lab(wsB, 64, 'Method', bold=True)
+sc = [
+    (65, 'DCF - blended (Gordon + exit)', '=DCF_Valuation!$E$66', 0.50),
+    (66, 'Comps - peer median implied', '=Comps!$D$21', 0.20),
+    (67, 'Precedents - median EV/EBITDA implied', '=Precedents!$F$16', 0.10),
+    (68, 'SOTP - segment sum-of-parts', '=SOTP!$D$17', 0.20),
+]
+for r, l, f, w in sc:
+    lab(wsB, r, l)
+    put(wsB, f'C{r}', f, F_PX)
+    put(wsB, f'D{r}', w, F_PCT, kind='input', fill=YEL)
+    put(wsB, f'E{r}', f'=C{r}*D{r}', F_PX)
+lab(wsB, 69, 'Total weight (must be 100%)', bold=True)
+put(wsB, 'D69', '=SUM(D65:D68)', F_PCT, bold=True)
+lab(wsB, 70, 'Weighted target price', 'price', bold=True)
+put(wsB, 'C70', '=SUM(E65:E68)', F_PX, bold=True)
+lab(wsB, 71, 'Upside / (downside) to target', '%', bold=True)
+put(wsB, 'C71', '=C70/Assumptions!C17-1', F_PCT, bold=True)
+lab(wsB, 72, 'Implied rating at target', None, bold=True)
+put(wsB, 'C72', '=IF(C71>=$C$6,"BUY",IF(C71<=$C$7,"SELL","HOLD"))', None, bold=True, align='right')
+band(wsB, 74, 'QUALITY & RETURN DIAGNOSTICS (FY26E unless noted)', c2='H')
+diag = [
+    (75, 'ROE (NI / avg equity)', '=IS!F30/AVERAGE(BS!E20,BS!F20)', F_PCT),
+    (76, 'ROIC (NOPAT / invested capital)', '=IS!F24/(BS!E17+BS!E20-BS!E7)', F_PCT),
+    (77, 'FCF yield (UFCF / EV)', '=DCF_Valuation!F37/DCF_Valuation!E60', F_PCT),
+    (78, 'Cash conversion (UFCF / EBITDA)', '=DCF_Valuation!F37/IS!F18', F_PCT),
+    (79, 'Capex / D&A', '=BS!F32/BS!F33', F_X),
+    (80, 'Net debt / EBITDA (FY25A)', '=BS!E45', F_X),
+    (81, 'EBIT / interest coverage (FY26E)', '=BS!F46', F_X),
+    (82, 'DSO (FY26E, days)', f'=Assumptions!F{A["dso"]["live"]}', F_DAYS),
+]
+for r, l, f, fm in diag:
+    lab(wsB, r, l)
+    put(wsB, f'C{r}', f, fm)
+
+CD = 84
 band(wsB, CD, 'CHART DATA (live links)', c2='H')
 rY, rR, rM, rU, rP, rE, rT = CD + 1, CD + 2, CD + 3, CD + 4, CD + 5, CD + 6, CD + 7
 for r, l, u in [(rY, 'Fiscal year', None), (rR, 'Revenue', 'units'), (rM, 'EBITDA margin', '%'), (rU, 'UFCF', 'units'),

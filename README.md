@@ -1,8 +1,10 @@
 ﻿# Ticker → DCF (Streamlit) — Institutional Model
 
-Enter a ticker, download a 17-tab, fully formula-driven, sell-side-style Excel DCF.
+Enter a ticker, download a 18-tab, fully formula-driven, sell-side-style Excel DCF.
 
 **Model architecture**
+- **Target price scorecard**: weighted DCF / comps / precedents / SOTP with editable weights, implied rating on target; ROE / ROIC / FCF yield / cash-conversion diagnostics.
+- **SOTP tab**: segment EV from segment EBITDA × assigned multiples, cross-checked to consolidated DCF.
 - **Live peer fundamentals**: beta, D/E, price, EV/EBITDA and P/E fetched for the 5 curated peers from the dataset; WACC and Comps auto-populate (editable fallbacks).
 - **Bridge tab**: tornado-style valuation bridge for WACC ±100bps, g ±50bps, exit multiple ±1.0x, with bar chart.
 - **Post-SBC GAAP-style IS**: EBITDA / EBIT / NI after stock-based compensation (no double count in UFCF).

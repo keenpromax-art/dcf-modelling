@@ -80,7 +80,7 @@ with st.sidebar:
                 '3. Download the Excel \u2014 every input is live there\n4. Change drivers in **Excel**; everything recalculates')
     st.divider()
     st.markdown('**Workbook tabs**')
-    st.caption('Cover \u00b7 Assumptions \u00b7 Bridge \u00b7 Segments \u00b7 Macro_Scenarios \u00b7 IS \u00b7 BS \u00b7 CFS \u00b7 WACC \u00b7 DCF_Valuation \u00b7 Comps \u00b7 Scenario_Valuation \u00b7 Sensitivity_Analysis \u00b7 Precedents \u00b7 Risks \u00b7 Controls \u00b7 Version_Log')
+    st.caption('Cover \u00b7 Assumptions \u00b7 Bridge \u00b7 Segments \u00b7 SOTP \u00b7 Macro_Scenarios \u00b7 IS \u00b7 BS \u00b7 CFS \u00b7 WACC \u00b7 DCF_Valuation \u00b7 Comps \u00b7 Scenario_Valuation \u00b7 Sensitivity_Analysis \u00b7 Precedents \u00b7 Risks \u00b7 Controls \u00b7 Version_Log')
     st.divider()
     st.markdown('**Ticker format**')
     st.caption('US: `AAPL` \u00b7 India: `RELIANCE.NS` \u00b7 Germany: `SAP.DE` \u00b7 UK: `BP.L` \u00b7 Japan: `7203.T` \u00b7 Switzerland: `NESN.SW`')
@@ -88,7 +88,7 @@ with st.sidebar:
     st.caption('Data: Yahoo Finance (unofficial, may be incomplete). Not for banks / insurers / REITs. Illustrative output, not investment advice.')
 
 # ------------------------------------------------------------------ hero + input
-REGIMES = ['17-tab institutional model', 'Tornado bridge', 'Live peer fundamentals', 'Post-SBC GAAP IS', 'Segments + buybacks', '3-statement integrated model', 'Bear / Base / Bull', 'WACC via CAPM + peer betas', 'Gordon + exit multiple blend', 'TSM dilution', 'Peer multiples cross-check', 'Football field & implied rating', 'Driver-based forecast', 'Full BS articulation', 'Balance check = 0']
+REGIMES = ['18-tab institutional model', 'SOTP + weighted target price', 'Tornado bridge', 'Live peer fundamentals', 'Post-SBC GAAP IS', 'Segments + buybacks', '3-statement integrated model', 'Bear / Base / Bull', 'WACC via CAPM + peer betas', 'Gordon + exit multiple blend', 'TSM dilution', 'Peer multiples cross-check', 'Football field & implied rating', 'Driver-based forecast', 'Full BS articulation', 'Balance check = 0']
 _tape = ' \u2002&middot;\u2002 '.join(REGIMES) + ' \u2002&middot;\u2002 '
 st.markdown('<div class="hero"><div class="hero-inner"><h1>Ticker \u2192 DCF Valuation Workbook</h1>'
             '<p>Enter a ticker. Get a bank-grade, fully formula-driven Excel DCF: 3-statement integrated model, WACC via CAPM with peer betas, Bear / Base / Bull scenarios, comps cross-check, football field and sensitivity tables.</p></div>'
@@ -120,7 +120,7 @@ if run:
                 st.write('\U0001F4E5 Fetching financial statements & market data from Yahoo Finance')
                 d = fetch_company(ticker)
                 rf = risk_free()
-                st.write('\U0001F9EE Building the 17-tab formula-driven workbook and pre-filling assumptions')
+                st.write('\U0001F9EE Building the 18-tab formula-driven workbook and pre-filling assumptions')
                 out = os.path.join(tempfile.mkdtemp(), f'DCF_{ticker.replace("^", "").replace("/", "_")}.xlsx')
                 build_workbook(d, rf, out)
                 prev = None
