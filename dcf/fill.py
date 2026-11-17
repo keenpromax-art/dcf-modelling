@@ -7,7 +7,8 @@ FC = ['F', 'G', 'H', 'I', 'J']
 
 def make_hook(d, rf):
     def hook(wb, g):
-        A, Mx, HR = g['A'], g['M'], g['HR']          # row registries from the builder
+        A, Mx, HR, SK = g['A'], g['M'], g['HR'], g['SK']      # row registries + scenario keys from the builder
+        ad = g['apply_delta']                                  # Base path + scenario delta x shape
         ws, wm, ww, wd = wb['Assumptions'], wb['Macro_Scenarios'], wb['WACC'], wb['DCF_Valuation']
         h, rev = d['hist'], d['hist']['rev']
         used = {}
@@ -39,25 +40,32 @@ def make_hook(d, rf):
         def ratio(k, den='rev'):
             return sum(h[k][j] / h[den][j] for j in (1, 2) if h[den][j]) / 2.0
 
-        def setrow(key, vals):                              # (bear, base, bull), scalar or list of 5
-            for s, v in zip(('bear', 'base', 'bull'), vals):
+        def put_all(key, vec_by_s, lo=None, hi=None):         # write one vector per scenario into Assumptions rows
+            for s in SK:
                 for i, c in enumerate(FC):
-                    ws[f'{c}{A[key][s]}'] = round(v[i] if isinstance(v, list) else v, 5)
+                    v = vec_by_s[s][i]
+                    v = max(v, lo) if lo is not None else v
+                    v = min(v, hi) if hi is not None else v
+                    ws[f'{c}{A[key][s]}'] = round(v, 5)
+
+        def flat(key, v):
+            put_all(key, {s: [v] * 5 for s in SK})
+
+        def shaped(key, base_vec, lo=None, hi=None):          # company Base path + the 23-scenario deltas
+            put_all(key, ad(key, base_vec), lo, hi)
 
         gm = 1 - ratio('cogs'); da = h['da'][2] / rev[2]; capex = h['capex'][2] / rev[2]
-        setrow('gmb', (gm - 0.01, gm, gm + 0.01))
-        setrow('sga', (ratio('sga') + 0.005, ratio('sga'), ratio('sga') - 0.005))
-        setrow('rd', (ratio('rd') + 0.002, ratio('rd'), ratio('rd') - 0.001))
-        setrow('oth', (ratio('oth'),) * 3); setrow('sbc', (ratio('sbc'),) * 3)
+        shaped('gmb', [gm] * 5, 0.05, 0.95)
+        shaped('sga', [ratio('sga')] * 5, 0.0); shaped('rd', [ratio('rd')] * 5, 0.0)
+        flat('oth', ratio('oth')); flat('sbc', ratio('sbc'))
         has_cogs = h['cogs'][2] > 0
         dso = ratio('ar') * 365
         dio = ratio('inv', 'cogs') * 365 if has_cogs else 0.0
         dpo = ratio('ap', 'cogs') * 365 if has_cogs else 0.0
-        setrow('dso', (dso + 3, dso, dso - 2)); setrow('dio', (dio + 5, dio, dio - 3)); setrow('dpo', (dpo - 3, dpo, dpo + 3))
-        setrow('oca', (ratio('oca'),) * 3); setrow('ocl', (ratio('ocl'),) * 3)
-        setrow('da', (da,) * 3)
-        mcx, gcx = max(da, 0.005), max(capex - da, 0.005)
-        setrow('mcx', (mcx,) * 3); setrow('gcx', (gcx * 0.7, gcx, gcx * 1.2))
+        shaped('dso', [dso] * 5, 0.0); shaped('dio', [dio] * 5, 0.0); shaped('dpo', [dpo] * 5, 0.0)
+        flat('oca', ratio('oca')); flat('ocl', ratio('ocl')); flat('da', da)
+        flat('mcx', max(da, 0.005))
+        shaped('gcx', [max(capex - da, 0.005)] * 5, 0.002)
         for c in FC:
             ws[f'{c}{A["draw"]}'] = 0.0
         # revenue: fade historical CAGR toward FADE_TO_GROWTH; solve the market-share term so Base growth follows that path
@@ -66,11 +74,12 @@ def make_hook(d, rf):
         cpi = [wm[f'{c}{Mx["cpi"]["base"]}'].value for c in FC]
         spr = ws[f'F{A["spread"]["base"]}'].value or 0.0
         base = [(1 + cagr + (C.FADE_TO_GROWTH - cagr) * i / 4.0) / (1 + cpi[i] + spr) - 1 - tam[i] for i in range(5)]
-        setrow('share', ([x - 0.015 for x in base], base, [x + 0.01 for x in base]))
+        shaped('share', base)
         used['Hist. revenue CAGR'] = round(cagr, 4)
-        for s, adj in zip(('bear', 'base', 'bull'), (0.007, 0.0, -0.005)):
-            for c in FC:
-                wm[f'{c}{Mx["rf"][s]}'] = round(rf + adj, 4)
+        rfv = ad('rf', [rf] * 5)                              # risk-free anchored to the live 10Y yield (+ scenario shifts)
+        for s in SK:
+            for i, c in enumerate(FC):
+                wm[f'{c}{Mx["rf"][s]}'] = round(rfv[s][i], 4)
         used['Risk-free (10Y)'] = round(rf, 4)
         own = (d['name'] + ' (subject co. - replace with real peers)', d['ticker'], d['beta'], d['de'])
         for i in range(5):                                   # placeholder peer set = the company itself
