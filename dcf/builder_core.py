@@ -231,8 +231,7 @@ M['transmission_start'] = mr
 wsA = WS['Assumptions']
 title(wsA, 'Assumptions - Control Center & Drivers',
       'LEGEND: Blue font = hard-coded input | Black = same-sheet formula | Green = cross-sheet link | Yellow fill = fill these cells first for a new company.')
-put(wsA, 'A3', 'ILLUSTRATIVE DATA: all pre-loaded numbers are for a fictional "Example Co." - overwrite every blue cell (sources: 10-K/annual report, market data, consensus) before using.',
-    kind='label', italic=True, color='C00000')
+# (top 3 rows are blank/hidden on every sheet - see the formatting pass)
 A = {}
 
 band(wsA, 4, 'A. CONTROL PANEL & COMPANY INFORMATION')
@@ -333,8 +332,8 @@ for i, (k, label, vals) in enumerate(HIST):
     lab(wsA, row, label, 'units')
     for j, c in enumerate(HC):
         put(wsA, f'{c}{row}', float(vals[j]), F_NUM, fill=YEL)
-put(wsA, 'A57', 'Note: cost lines exclude D&A and SBC (EBITDA shown is Adjusted / pre-SBC). SBC is deducted in UFCF when the switch in C13 = Yes. Balance-sheet history (AR/Inv/OCA/AP/OCL/PP&E/debt/cash/equity) anchors the BS tab.',
-    kind='label', italic=True)
+put(wsA, 'A57', 'ILLUSTRATIVE DATA: all pre-loaded numbers are for a fictional "Example Co." - overwrite every blue cell (10-K / consensus). Note: cost lines exclude D&A and SBC (EBITDA shown is Adjusted / pre-SBC); the BS plug keeps history balancing.',
+    kind='label', italic=True, color='C00000')
 
 band(wsA, 58, 'E. OPERATING DRIVERS (HISTORICAL + 5-YEAR FORECAST ACROSS BEAR / BASE / BULL)')
 yr_labels(wsA, 58, '$C$12', cols=ALL[:-1])
@@ -1605,11 +1604,15 @@ for n, rows_ in [('Assumptions', range(1, 4))]:
     pass
 wsA.freeze_panes = 'C4'
 wsM.freeze_panes = 'C5'
-# remove title + legend lines (rows 1-2) from every sheet
+# hide the top 3 rows (blank) on every sheet - view and print start at the first content row
+from openpyxl.utils import get_column_letter
 for _ws in WS.values():
     _ws['A1'].value = None
     _ws['A2'].value = None
-    _ws.row_dimensions[1].height = None
+    _ws['A3'].value = None
+    for _r in (1, 2, 3):
+        _ws.row_dimensions[_r].hidden = True
+    _ws.print_area = f'A4:{get_column_letter(_ws.max_column)}{_ws.max_row}'
 wb.properties.title = 'DCF Valuation Template'
 if globals().get('HOOK'):
     HOOK(wb, globals())   # lets the app pre-fill inputs for a ticker
