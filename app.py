@@ -80,7 +80,7 @@ with st.sidebar:
                 '3. Download the Excel \u2014 every input is live there\n4. Change drivers in **Excel**; everything recalculates')
     st.divider()
     st.markdown('**Workbook tabs**')
-    st.caption('Dashboard \u00b7 Assumptions \u00b7 Macro_Scenarios \u00b7 Operating_Model \u00b7 WACC \u00b7 DCF_Valuation \u00b7 Scenario_Valuation \u00b7 Sensitivity_Analysis')
+    st.caption('Cover \u00b7 Assumptions \u00b7 Macro_Scenarios \u00b7 IS \u00b7 BS \u00b7 CFS \u00b7 WACC \u00b7 DCF_Valuation \u00b7 Comps \u00b7 Scenario_Valuation \u00b7 Sensitivity_Analysis')
     st.divider()
     st.markdown('**Ticker format**')
     st.caption('US: `AAPL` \u00b7 India: `RELIANCE.NS` \u00b7 Germany: `SAP.DE` \u00b7 UK: `BP.L` \u00b7 Japan: `7203.T` \u00b7 Switzerland: `NESN.SW`')
@@ -88,15 +88,10 @@ with st.sidebar:
     st.caption('Data: Yahoo Finance (unofficial, may be incomplete). Not for banks / insurers / REITs. Illustrative output, not investment advice.')
 
 # ------------------------------------------------------------------ hero + input
-REGIMES = ['Bear', 'Base', 'Bull', 'Soft Landing', 'Mild Recession', 'Deep Recession', 'Stagflation',
-           'Rate Shock (Hawkish Central Banks)', 'Dovish Pivot (Rate Cuts)', 'Oil / Commodity Price Shock',
-           'Input-Cost Relief (Commodity Deflation)', 'Strong Home Currency (Translation Headwind)',
-           'Weak Home Currency (FX Tailwind)', 'AI / Technology Productivity Boom', 'Supply-Chain Disruption',
-           'Trade War / Tariffs', 'Geopolitical Shock', 'Market-Share Outperformer', 'Competitive Disruption (Share Loss)',
-           'Pricing-Power Boom', 'Price War / Margin Squeeze', 'Cost-Efficiency Programme', 'Demand Boom / Reflation']
+REGIMES = ['3-statement integrated model', 'Bear / Base / Bull', 'WACC via CAPM + peer betas', 'Gordon + exit multiple blend', 'TSM dilution', 'Peer multiples cross-check', 'Football field & implied rating', 'Driver-based forecast', 'Full BS articulation', 'Balance check = 0']
 _tape = ' \u2002&middot;\u2002 '.join(REGIMES) + ' \u2002&middot;\u2002 '
 st.markdown('<div class="hero"><div class="hero-inner"><h1>Ticker \u2192 DCF Valuation Workbook</h1>'
-            '<p>Enter a ticker. Get an institutional-style, fully formula-driven Excel DCF with 23 macro scenarios (Bear / Base / Bull + 20 regimes), WACC build and sensitivity tables.</p></div>'
+            '<p>Enter a ticker. Get a bank-grade, fully formula-driven Excel DCF: 3-statement integrated model, WACC via CAPM with peer betas, Bear / Base / Bull scenarios, comps cross-check, football field and sensitivity tables.</p></div>'
             f'<div class="hero-tape"><div class="hero-tape-inner"><span>{_tape}</span><span>{_tape}</span></div></div></div>',
             unsafe_allow_html=True)
 
@@ -125,7 +120,7 @@ if run:
                 st.write('\U0001F4E5 Fetching financial statements & market data from Yahoo Finance')
                 d = fetch_company(ticker)
                 rf = risk_free()
-                st.write('\U0001F9EE Building the 8-tab formula-driven workbook and pre-filling assumptions')
+                st.write('\U0001F9EE Building the 11-tab formula-driven workbook and pre-filling assumptions')
                 out = os.path.join(tempfile.mkdtemp(), f'DCF_{ticker.replace("^", "").replace("/", "_")}.xlsx')
                 build_workbook(d, rf, out)
                 prev = None
@@ -180,6 +175,10 @@ dl.download_button('\u2B07  Download Excel workbook', res['bytes'], file_name=re
                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', type='primary')
 note.caption('Open the file \u2192 **Assumptions** tab: set the scenario (C5), edit drivers, terminal inputs & probabilities. '
              'Mid-year toggle is on **DCF_Valuation**. Excel recalculates on open.')
+if prev and prev.get('rating'):
+    pt = prev.get('price_target')
+    pt_txt = f' · blended DCF value **{pt:,.2f}**' if pt else ''
+    note.caption(f'DCF-implied rating: **{prev["rating"]}**{pt_txt}')
 
 # ------------------------------------------------------------------ tabs
 t1, t2, t3, t4, t5 = st.tabs(['\U0001F4CA Valuation', '\U0001F4C8 Financials', '\U0001F3AF Sensitivity', '\U0001F9FE Pre-filled inputs', '\u2705 Model checks'])
@@ -224,8 +223,8 @@ with t1:
               'Enterprise value': '{:,.0f}', 'Equity value': '{:,.0f}', 'Price (Gordon)': '{:,.2f}', 'Price (Exit)': '{:,.2f}',
               'Price (blended)': '{:,.2f}', 'Upside / (downside)': '{:+.1%}', 'TV % of EV': '{:.0%}'}
         st.dataframe(sc.style.format(fm, na_rep='n/a'), width='stretch', height=min(900, 36 * len(sc) + 40))
-        st.caption('Probabilities are inputs in Excel (`Scenario_Valuation`, default 8 / 30 / 8 + 20 regimes = 100%). '
-                   'Pick the active scenario in `Assumptions!C5` (library in `Assumptions!N5:O27`).')
+        st.caption('Probabilities are inputs in Excel (`Scenario_Valuation`, default 20 / 60 / 20 = 100%). '
+                   'Pick the active scenario in `Assumptions!C5`.')
 
 with t2:
     if prev:
@@ -273,7 +272,7 @@ with t4:
     u = d['_used']
     st.dataframe(pd.DataFrame({'Input': list(u), 'Value': [f'{v:,.4g}' if isinstance(v, float) else str(v) for v in u.values()]}),
                  hide_index=True, width='stretch')
-    st.markdown('- **Also pre-filled:** 3-year historicals; drivers for all 23 scenarios (Base from last-2-year ratios + each regime\'s delta); macro paths; revenue growth fading from the historical CAGR to 3.5%.\n'
+    st.markdown('- **Also pre-filled:** 3-year historicals (IS / BS / CFS), Bear / Base / Bull drivers, macro paths; revenue growth fading from the historical CAGR to 3.5%. Balance check ties to zero by construction.\n'
                 '- **You should replace:** peer betas on `WACC` (placeholder = company itself), options/RSUs on `Assumptions` (default 0), the macro paths for your region.\n'
                 '- **Defaults:** terminal growth 2.5%, 50/50 Gordon vs exit multiple, mid-year on (see `dcf/config.py`).')
 

@@ -5,7 +5,7 @@ import yfinance as yf
 from .config import DEFAULT_RF
 
 M = 1e6
-KEYS = ['rev', 'cogs', 'sga', 'rd', 'oth', 'da', 'sbc', 'capex', 'ar', 'inv', 'oca', 'ap', 'ocl', 'ppe', 'int', 'debt', 'cash']
+KEYS = ['rev', 'cogs', 'sga', 'rd', 'oth', 'da', 'sbc', 'capex', 'ar', 'inv', 'oca', 'ap', 'ocl', 'ppe', 'int', 'debt', 'cash', 'equity']
 
 
 def _num(x):
@@ -64,7 +64,8 @@ def fetch_company(ticker):
                     ocl=_pick(bs, ['Current Accrued Expenses', 'Other Current Liabilities'], b, agg=True),
                     ppe=_pick(bs, ['Net PPE'], b),
                     int=abs(_pick(fin, ['Interest Expense', 'Interest Expense Non Operating'], f)),
-                    debt=_pick(bs, ['Total Debt'], b), cash=_pick(bs, cash_names, b))
+                    debt=_pick(bs, ['Total Debt'], b), cash=_pick(bs, cash_names, b),
+                    equity=_pick(bs, ['Stockholders Equity', 'Total Equity Gross Minority Interest', 'Common Stock Equity'], b))
         for k in KEYS:
             h[k].append(vals[k] / M)
     lb, lf = by.get(years[-1]), fy[years[-1]]
