@@ -63,6 +63,35 @@ def _safe_df(fn):
         return None
 
 
+def fetch_peers(tickers):
+    """Live peer fundamentals for WACC (beta, D/E) + Comps (price, shares, EV, multiples).
+
+    Each peer is fetched independently; a failure becomes a stub row so one bad ticker
+    never breaks the workbook. Values are kept in native units; callers convert to millions.
+    """
+    out = []
+    for tk in (tickers or [])[:5]:
+        info = _safe_info(yf.Ticker(tk))
+        price = _num(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose'))
+        mcap = _num(info.get('marketCap'))
+        ev = _num(info.get('enterpriseValue'))
+        ev_ebitda = _num(info.get('enterpriseToEbitda'))
+        ev_rev = _num(info.get('enterpriseToRevenue'))
+        pe = _num(info.get('trailingPE') or info.get('forwardPE'))
+        rec = dict(ticker=tk, ok=bool(price and mcap),
+                   beta=_num(info.get('beta')) or 1.0,
+                   de=_num(info.get('debtToEquity')) / 100.0,
+                   price=price, shares=_num(info.get('sharesOutstanding')) / M,
+                   mcap=mcap / M, net_debt=(ev - mcap) / M if ev else 0.0,
+                   ev_ebitda=ev_ebitda, pe=pe,
+                   growth=_num(info.get('revenueGrowth')) or 0.06,
+                   ebitda=(ev / ev_ebitda / M) if ev and ev_ebitda else 0.0,
+                   ni=(mcap / pe / M) if mcap and pe else 0.0,
+                   rev=(ev / ev_rev / M) if ev and ev_rev else 0.0)
+        out.append(rec)
+    return out
+
+
 def fetch_company(ticker):
     t = yf.Ticker(ticker)
     info = _safe_info(t)
@@ -105,6 +134,9 @@ def fetch_company(ticker):
     shares = _num(info.get('sharesOutstanding') or info.get('impliedSharesOutstanding')) / M
     if not price or not shares:
         raise ValueError('Yahoo Finance returned no share price / share count for this ticker.')
+    ref = lookup(ticker)
+    peers = [p[0] for p in (ref.get('p') or [])[:5]]
+    peers = list(dict.fromkeys(peers))[:5]   # de-duplicate sub-industry / business-model overlaps
     return dict(
         ticker=ticker.upper(), name=info.get('longName') or info.get('shortName') or ticker.upper(),
         currency=(info.get('financialCurrency') or info.get('currency') or 'USD').upper(),
@@ -114,7 +146,7 @@ def fetch_company(ticker):
         eff_tax=eff, beta=_num(info.get('beta')) or 1.0, de=_num(info.get('debtToEquity')) / 100.0,
         ev_ebitda=_num(info.get('enterpriseToEbitda')), sector=info.get('sector', ''), industry=info.get('industry', ''),
         market_cap=_num(info.get('marketCap')) / M,
-        ref=lookup(ticker))
+        ref=ref, peers_data=fetch_peers(peers))
 
 
 def risk_free():

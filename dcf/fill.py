@@ -97,20 +97,39 @@ def make_hook(d, rf):
         own = (d['name'] + ' (subject co. - replace with real peers)', d['ticker'], d['beta'], d['de'])
         ref = d.get('ref') or {}
         peers = [p[0] for p in (ref.get('p') or [])][:5]
-        for i in range(5):                                   # curated peer tickers from CSV; fallback = company itself
+        pdata = d.get('peers_data') or []
+        for i in range(5):                                   # curated peer tickers + live beta/D-E; fallback = company itself
             r = 6 + i
             nm = (ref.get('p') or [])[i][1] if i < len(ref.get('p') or []) else own[0]
             tk = peers[i] if i < len(peers) else own[1]
-            ww[f'A{r}'] = nm; ww[f'B{r}'] = tk; ww[f'C{r}'] = round(own[2], 2); ww[f'D{r}'] = round(own[3], 3); ww[f'E{r}'] = C.MARGINAL_TAX
+            pd_ = pdata[i] if i < len(pdata) else {}
+            beta = pd_.get('beta') if pd_.get('ok') else own[2]
+            de = pd_.get('de') if pd_.get('ok') else own[3]
+            ww[f'A{r}'] = nm; ww[f'B{r}'] = tk
+            ww[f'C{r}'] = round(beta or own[2], 2); ww[f'D{r}'] = round(de or own[3], 3)
+            ww[f'E{r}'] = C.MARGINAL_TAX
         # Risks tab seeded from curated dataset
         wr = wb['Risks']
         for i, rtext in enumerate((ref.get('r') or [])[:6]):
             wr[f'B{6 + i}'] = rtext[:90]
-        # Comps peer tickers seeded from curated dataset
+        # Comps peer data seeded from curated tickers + live Yahoo snapshot multiples
         wc = wb['Comps']
         for i in range(5):
-            if i < len(peers):
+            r = 7 + i
+            pd_ = pdata[i] if i < len(pdata) else {}
+            if pd_.get('ok'):
+                wc[f'B{r}'] = pd_['ticker']
+                if pd_.get('price'): wc[f'C{r}'] = round(pd_['price'], 2)
+                if pd_.get('shares'): wc[f'D{r}'] = round(pd_['shares'], 3)
+                if pd_.get('net_debt'): wc[f'F{r}'] = round(pd_['net_debt'], 1)
+                if pd_.get('ebitda'): wc[f'H{r}'] = round(pd_['ebitda'], 1)
+                if pd_.get('ebitda'):
+                    growth = pd_.get('growth') or 0.06
+                    wc[f'J{r}'] = round(pd_['ebitda'] * (1 + growth), 1)
+                if pd_.get('ni'): wc[f'L{r}'] = round(pd_['ni'], 1)
+                if pd_.get('rev'): wc[f'O{r}'] = round(pd_['rev'], 1)
+            elif i < len(peers):
                 wc[f'B{7 + i}'] = peers[i]
-                wb.calculation.fullCalcOnLoad = True
+        wb.calculation.fullCalcOnLoad = True
         d['_used'] = used
     return hook

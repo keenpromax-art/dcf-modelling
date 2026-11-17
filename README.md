@@ -1,8 +1,10 @@
 ﻿# Ticker → DCF (Streamlit) — Institutional Model
 
-Enter a ticker, download a 16-tab, fully formula-driven, sell-side-style Excel DCF.
+Enter a ticker, download a 17-tab, fully formula-driven, sell-side-style Excel DCF.
 
 **Model architecture**
+- **Live peer fundamentals**: beta, D/E, price, EV/EBITDA and P/E fetched for the 5 curated peers from the dataset; WACC and Comps auto-populate (editable fallbacks).
+- **Bridge tab**: tornado-style valuation bridge for WACC ±100bps, g ±50bps, exit multiple ±1.0x, with bar chart.
 - **Post-SBC GAAP-style IS**: EBITDA / EBIT / NI after stock-based compensation (no double count in UFCF).
 - **Segments**: revenue mix + margin by business line seeded from `ticker_full_dataset_v2.csv` (e.g. AAPL → iPhone/Mac/iPad/Wearables/Services); total revenue and EBITDA tie to the IS.
 - **Integrated BS / CFS**: cash rolls from CFS, equity = opening + NI + SBC − dividends − buybacks, balance check = 0 every year, CFS↔BS tie.

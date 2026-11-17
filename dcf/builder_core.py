@@ -47,7 +47,7 @@ def pv(c):
 
 
 wb = Workbook()
-NAMES = ['Cover', 'Assumptions', 'Segments', 'Macro_Scenarios', 'IS', 'BS', 'CFS',
+NAMES = ['Cover', 'Assumptions', 'Bridge', 'Segments', 'Macro_Scenarios', 'IS', 'BS', 'CFS',
          'WACC', 'DCF_Valuation', 'Comps', 'Scenario_Valuation', 'Sensitivity_Analysis',
          'Precedents', 'Risks', 'Controls', 'Version_Log']
 wb.active.title = NAMES[0]
@@ -1457,6 +1457,53 @@ for i in range(12):
 wsV.freeze_panes = 'C6'
 
 # =====================================================================================
+# BRIDGE - valuation bridge (tornado) with bar chart
+# =====================================================================================
+wsBr = WS['Bridge']
+title(wsBr, 'Bridge - Valuation Sensitivity to Key Drivers')
+put(wsBr, 'A2', '="Blended DCF value per share at +/- one step on each driver. Amber = base case."', kind='calc', italic=True)
+band(wsBr, 4, 'VALUATION BRIDGE - IMPACT OF KEY DRIVERS (± step, blended value per share)', c2='H')
+for c, t in zip('CDE', ['Downside', 'Base', 'Upside']):
+    put(wsBr, f'{c}5', t, kind='label', bold=True, align='right')
+D = 'DCF_Valuation!'
+W = f'{D}$C$19'; G = f'{D}$C$20'; N = f'{D}$J$42'
+pv_exp = f'(SUMPRODUCT({D}$F$37:$J$37/(1+{{w}})^{D}$F$43:$J$43))'
+tv_g = f'({D}$K$37*(1+{{g}})/({{w}}-{{g}}))/(1+{{w}})^{N}'
+tv_x = f'({D}$J$28*{{x}})/(1+{{w}})^{N}'
+shares = f'{D}$F$104'
+bridge = [
+    (8, 'WACC ±100bps', f'=({pv_exp.format(w=f"({W}-0.01)")}+{tv_g.format(w=f"({W}-0.01)", g=G)}+{D}$C$61+{D}$C$62+{D}$C$63)/{shares}',
+     f'=DCF_Valuation!$E$66', f'=({pv_exp.format(w=f"({W}+0.01)")}+{tv_g.format(w=f"({W}+0.01)", g=G)}+{D}$C$61+{D}$C$62+{D}$C$63)/{shares}'),
+    (9, 'Terminal growth g ±50bps', f'=({pv_exp.format(w=W)}+{tv_g.format(w=W, g=f"({G}-0.005)")}+{D}$C$61+{D}$C$62+{D}$C$63)/{shares}',
+     f'=DCF_Valuation!$E$66', f'=({pv_exp.format(w=W)}+{tv_g.format(w=W, g=f"({G}+0.005)")}+{D}$C$61+{D}$C$62+{D}$C$63)/{shares}'),
+    (10, 'Exit multiple ±1.0x', f'=({pv_exp.format(w=W)}+{tv_x.format(w=W, x=f"({D}$C$21-1)")}+{D}$C$61+{D}$C$62+{D}$C$63)/{shares}',
+     f'=DCF_Valuation!$E$66', f'=({pv_exp.format(w=W)}+{tv_x.format(w=W, x=f"({D}$C$21+1)")}+{D}$C$61+{D}$C$62+{D}$C$63)/{shares}'),
+]
+for r, l, lo, mid, hi in bridge:
+    lab(wsBr, r, l)
+    for col, v in zip('CDE', (lo, mid, hi)):
+        put(wsBr, f'{col}{r}', v, F_PX)
+for r in range(8, 11):
+    put(wsBr, f'F{r}', f'=D{r}-C{r}', F_PX)
+    put(wsBr, f'G{r}', f'=E{r}-D{r}', F_PX)
+
+from openpyxl.chart import BarChart
+barb = BarChart()
+barb.type = 'bar'
+barb.grouping = 'clustered'
+for col, nm in [('C','Downside'),('E','Upside')]:
+    barb.series.append(Series(Reference(wsBr, min_col=3 if col=='C' else 5, min_row=8, max_row=10), title=nm))
+barb.set_categories(Reference(wsBr, min_col=1, min_row=8, max_row=10))
+barb.y_axis.numFmt = '#,##0.00'
+barb.title = 'Valuation Bridge: Downside vs Upside per Driver'
+barb.title.overlay = False
+barb.x_axis.delete = False
+barb.y_axis.delete = False
+barb.height = 9
+barb.legend = None
+wsBr.add_chart(barb, 'A13')
+wsBr.freeze_panes = 'C6'
+# =====================================================================================
 # 1. COVER - EQUITY RESEARCH SUMMARY (sell-side format)
 # =====================================================================================
 wsB = WS['Cover']
@@ -1753,6 +1800,25 @@ for _ws in WS.values():
         _ws.row_dimensions[_r].hidden = True
     if _ws.max_row >= 4:
         _ws.print_area = f'A4:{get_column_letter(_ws.max_column)}{_ws.max_row}'
+# ---- input validation + named ranges (analyst control conventions) ----
+from openpyxl.workbook.defined_name import DefinedName
+for rng, lo, hi, msg in [
+    ("Assumptions!$C$29", 0.05, 0.45, "Effective tax rate 5%-45%"),
+    ("Assumptions!$C$33", 0.0, 0.05, "Terminal growth 0%-5%, must stay below WACC"),
+    ("Assumptions!$C$34", 3.0, 30.0, "Exit EV/EBITDA 3x-30x"),
+    ("Assumptions!$C$35", 0.0, 1.0, "Gordon weight 0%-100%"),
+    ("Assumptions!$C$37", 0.0, 0.40, "Terminal ROIC 0%-40%"),
+    ("DCF_Valuation!$C$101", 0.0, 1.0, "Repurchase budget 0%-100% of UFCF"),
+]:
+    sheet, addr = rng.split('!')
+    dv = DataValidation(type='decimal', operator='between', formula1=str(lo), formula2=str(hi),
+                        allow_blank=False, showErrorMessage=True, errorTitle='Input out of range', error=msg)
+    WS[sheet.strip('$')].add_data_validation(dv)
+    dv.add(addr.replace('$', ''))
+for nm, ref in [('WACC_Live', WACC_LIVE), ('TerminalGrowth', 'Assumptions!$C$33'),
+                ('ExitMultiple', 'Assumptions!$C$34'), ('SharePrice', 'Assumptions!$C$17'),
+                ('DilutedShares', 'DCF_Valuation!$F$104'), ('BasePrice', 'DCF_Valuation!$E$66')]:
+    wb.defined_names.add(DefinedName(nm, attr_text=ref))
 wb.properties.title = 'DCF Valuation Template'
 if globals().get('HOOK'):
     HOOK(wb, globals())   # lets the app pre-fill inputs for a ticker
