@@ -134,6 +134,8 @@ if run:
             st.session_state.pop('res', None)
             st.error(f'**{type(e).__name__}:** {e}')
             st.caption('Check the ticker (add the exchange suffix, e.g. `.NS`, `.DE`, `.L`) or try again in a minute (Yahoo may rate-limit).')
+            with st.expander('Developer details (full traceback)'):
+                st.exception(e)
 
 res = st.session_state.get('res')
 if not res:

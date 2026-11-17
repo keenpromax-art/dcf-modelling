@@ -33,10 +33,25 @@ def _by_year(df):
     return {c.year: c for c in df.columns} if df is not None and not df.empty else {}
 
 
+def _safe_info(t):
+    try:
+        return t.info or {}
+    except Exception:
+        return {}
+
+
+def _safe_df(fn):
+    try:
+        df = fn()
+        return df if df is not None and not df.empty else None
+    except Exception:
+        return None
+
+
 def fetch_company(ticker):
     t = yf.Ticker(ticker)
-    info = t.info or {}
-    fin, bs, cf = t.financials, t.balance_sheet, t.cashflow
+    info = _safe_info(t)
+    fin, bs, cf = _safe_df(lambda: t.financials), _safe_df(lambda: t.balance_sheet), _safe_df(lambda: t.cashflow)
     fy, by, cy = _by_year(fin), _by_year(bs), _by_year(cf)
     years = sorted(fy)[-3:]
     if len(years) < 3:
