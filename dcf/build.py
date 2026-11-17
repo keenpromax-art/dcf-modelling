@@ -41,10 +41,10 @@ def preview(path):
         return None
     wb = load_workbook(f, data_only=True)
     sv, dcf, om, st_, asm = wb['Scenario_Valuation'], wb['DCF_Valuation'], wb['Operating_Model'], wb['Sensitivity_Analysis'], wb['Assumptions']
-    spec = {'Revenue CAGR (5Y)': 9, 'FY30E EBITDA margin': 10, 'FY30E UFCF': 11, 'WACC': 12, 'Enterprise value': 16,
-            'Equity value': 18, 'Implied share price': 22, 'Upside / (downside)': 24}
-    scen = pd.DataFrame({k: [_f(sv.cell(r, c).value) for c in (3, 4, 5, 6)] for k, r in spec.items()},
-                        index=['Bear', 'Base', 'Bull', 'Prob-weighted']).T
+    names = [sv.cell(r, 1).value for r in range(6, 29)] + ['Probability-weighted']
+    cols = {'Probability': 'C', 'Revenue CAGR': 'D', 'FY30E EBITDA margin': 'E', 'FY30E UFCF': 'F', 'WACC': 'G', 'Enterprise value': 'J',
+            'Equity value': 'K', 'Price (Gordon)': 'L', 'Price (Exit)': 'M', 'Price (blended)': 'N', 'Upside / (downside)': 'O', 'TV % of EV': 'P'}
+    scen = pd.DataFrame({k: [_f(sv[f'{c}{r}'].value) for r in range(6, 30)] for k, c in cols.items()}, index=names)
     g_axis = [_f(st_.cell(29, c).value) for c in range(3, 8)]
     w_axis = [_f(st_.cell(r, 2).value) for r in range(30, 35)]
     sens = [(w, g, _f(st_.cell(30 + i, 3 + j).value)) for i, w in enumerate(w_axis) for j, g in enumerate(g_axis)]
