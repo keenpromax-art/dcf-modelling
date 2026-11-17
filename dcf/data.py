@@ -1,11 +1,26 @@
 """Yahoo Finance (yfinance) extraction -> plain dict, all money in millions of reporting currency."""
-import math
+import json, math, os
 import pandas as pd
 import yfinance as yf
 from .config import DEFAULT_RF
 
 M = 1e6
 KEYS = ['rev', 'cogs', 'sga', 'rd', 'oth', 'da', 'sbc', 'capex', 'ar', 'inv', 'oca', 'ap', 'ocl', 'ppe', 'int', 'debt', 'cash', 'equity']
+
+_LOOKUP_PATH = os.path.join(os.path.dirname(__file__), 'peers_lookup.json')
+_LOOKUP = None
+
+
+def lookup(ticker):
+    """Curated peer/segment/risk data from ticker_full_dataset_v2.csv (top companies + examples)."""
+    global _LOOKUP
+    if _LOOKUP is None:
+        try:
+            with open(_LOOKUP_PATH, encoding='utf-8') as fh:
+                _LOOKUP = json.load(fh)
+        except Exception:
+            _LOOKUP = {}
+    return _LOOKUP.get(ticker.upper()) or _LOOKUP.get(ticker.upper().split('.')[0]) or {}
 
 
 def _num(x):
@@ -98,7 +113,8 @@ def fetch_company(ticker):
         minority=_pick(bs, ['Minority Interest'], lb) / M, pref=_pick(bs, ['Preferred Stock'], lb) / M,
         eff_tax=eff, beta=_num(info.get('beta')) or 1.0, de=_num(info.get('debtToEquity')) / 100.0,
         ev_ebitda=_num(info.get('enterpriseToEbitda')), sector=info.get('sector', ''), industry=info.get('industry', ''),
-        market_cap=_num(info.get('marketCap')) / M)
+        market_cap=_num(info.get('marketCap')) / M,
+        ref=lookup(ticker))
 
 
 def risk_free():

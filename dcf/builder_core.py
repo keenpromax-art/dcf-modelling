@@ -47,8 +47,9 @@ def pv(c):
 
 
 wb = Workbook()
-NAMES = ['Cover', 'Assumptions', 'Macro_Scenarios', 'IS', 'BS', 'CFS',
-         'WACC', 'DCF_Valuation', 'Comps', 'Scenario_Valuation', 'Sensitivity_Analysis']
+NAMES = ['Cover', 'Assumptions', 'Segments', 'Macro_Scenarios', 'IS', 'BS', 'CFS',
+         'WACC', 'DCF_Valuation', 'Comps', 'Scenario_Valuation', 'Sensitivity_Analysis',
+         'Precedents', 'Risks', 'Controls', 'Version_Log']
 wb.active.title = NAMES[0]
 for n in NAMES[1:]:
     wb.create_sheet(n)
@@ -134,6 +135,52 @@ def dv_list(ws, ref, options):
 def P(xs):
     return [x / 100.0 for x in xs]
 
+
+# =====================================================================================
+# SEGMENTS - top-down segment allocation (names + mix filled by hook from CSV lookup)
+# =====================================================================================
+wsG = WS['Segments']
+title(wsG, 'Segments - Revenue Mix & Margin by Business Line (ties to IS)')
+put(wsG, 'A2', '="Segment names + revenue mix are pre-filled from the ticker dataset. Overwrite any blue cell; total revenue / EBITDA must tie to the IS."', kind='calc', italic=True)
+band(wsG, 4, 'SEGMENT REVENUE MIX (% of total company revenue) - 5Y forecast', c2='K')
+yr_labels(wsG, 4, 'Assumptions!$C$12', cols=FC)
+SEG_ROWS = list(range(9, 15))
+for r in SEG_ROWS:
+    lab(wsG, r, f'  Segment {r - 8} (name from dataset)', 'name')
+    for c in FC:
+        put(wsG, f'{c}{r}', 0.0, F_PCT, kind='input', fill=YEL)
+band(wsG, 17, 'CHECK: revenue mix sums to 100% in every forecast year', c2='K')
+for c in FC:
+    put(wsG, f'{c}18', f'=SUM({c}9:{c}14)', F_PCT, bold=True)
+    put(wsG, f'{c}19', f'=IF(ABS({c}18-1)<0.005,"OK","REVIEW")', None, bold=True, align='right')
+band(wsG, 21, 'SEGMENT EBITDA MARGIN (% of segment revenue) - 5Y forecast', c2='K')
+for r in SEG_ROWS:
+    lab(wsG, r + 14, f'  Segment {r - 8} EBITDA margin', '%')
+    for c in FC:
+        put(wsG, f'{c}{r + 14}', 0.0, F_PCT, kind='input', fill=YEL)
+band(wsG, 30, 'SEGMENT REVENUE (units; mix x IS total revenue)', c2='K')
+for i, r in enumerate(SEG_ROWS):
+    lab(wsG, 31 + i, f'  Segment {i + 1} revenue')
+    for c in FC:
+        put(wsG, f'{c}{31 + i}', f'={c}{r}*IS!{c}11', F_NUM)
+lab(wsG, 37, 'Total segment revenue (ties to IS)', 'units', bold=True)
+for c in FC:
+    put(wsG, f'{c}37', f'=SUM({c}31:{c}36)', F_NUM, bold=True)
+lab(wsG, 38, 'Check vs IS revenue (must be 0)', 'units', bold=True)
+for c in FC:
+    put(wsG, f'{c}38', f'={c}37-IS!{c}11', F_NUM, bold=True)
+band(wsG, 40, 'SEGMENT EBITDA (units; revenue x margin)', c2='K')
+for i, r in enumerate(SEG_ROWS):
+    lab(wsG, 41 + i, f'  Segment {i + 1} EBITDA')
+    for c in FC:
+        put(wsG, f'{c}{41 + i}', f'={c}{31 + i}*{c}{r + 14}', F_NUM)
+lab(wsG, 47, 'Total segment EBITDA (ties to IS)', 'units', bold=True)
+for c in FC:
+    put(wsG, f'{c}47', f'=SUM({c}41:{c}46)', F_NUM, bold=True)
+lab(wsG, 48, 'Check vs IS EBITDA (must be 0)', 'units', bold=True)
+for c in FC:
+    put(wsG, f'{c}48', f'={c}47-IS!{c}18', F_NUM, bold=True)
+wsG.freeze_panes = 'C5'
 
 # =====================================================================================
 # 3. MACRO_SCENARIOS  (blocks first - Assumptions links to these rows)
@@ -299,6 +346,7 @@ for row, label, unit, val, fmt in [
     (34, 'Terminal exit EV / EBITDA multiple', 'x', 11.0, F_X),
     (35, 'Weight on Gordon Growth in blended value (rest = Exit Multiple)', '%', 0.5, F_PCT),
     (36, 'Tolerance: max terminal RONIC above WACC before audit flags REVIEW', '%', 0.05, F_PCT),
+    (37, 'Terminal ROIC (g / reinvestment rate; sector default 15%)', '%', 0.15, F_PCT),
 ]:
     lab(wsA, row, label, unit)
     put(wsA, f'C{row}', val, fmt, fill=YEL)
@@ -332,7 +380,7 @@ for i, (k, label, vals) in enumerate(HIST):
     lab(wsA, row, label, 'units')
     for j, c in enumerate(HC):
         put(wsA, f'{c}{row}', float(vals[j]), F_NUM, fill=YEL)
-put(wsA, 'A57', 'ILLUSTRATIVE DATA: all pre-loaded numbers are for a fictional "Example Co." - overwrite every blue cell (10-K / consensus). Note: cost lines exclude D&A and SBC (EBITDA shown is Adjusted / pre-SBC); the BS plug keeps history balancing.',
+put(wsA, 'A57', 'ILLUSTRATIVE DATA: overwrite every blue cell (10-K / consensus). EBITDA / EBIT / NI are post-SBC (GAAP-style); the BS plug keeps history balancing.',
     kind='label', italic=True, color='C00000')
 
 band(wsA, 58, 'E. OPERATING DRIVERS (HISTORICAL + 5-YEAR FORECAST ACROSS BEAR / BASE / BULL)')
@@ -447,7 +495,7 @@ for i, (label, fn, fmt) in enumerate(trans):
 # 4. IS - INCOME STATEMENT (full P&L to net income; Live scenario)
 # =====================================================================================
 wsO = WS['IS']
-title(wsO, 'IS - Income Statement (historical + 5Y forecast; Adjusted, pre-SBC EBITDA)')
+title(wsO, 'IS - Income Statement (historical + 5Y forecast; post-SBC, GAAP-style)')
 put(wsO, 'A2', '="All figures in "&Assumptions!C10&" | Active scenario: "&Assumptions!C5&" | Last column = terminal year (FY30E x (1 + g))"',
     kind='calc', italic=True)
 band(wsO, 4, 'FISCAL YEAR')
@@ -498,11 +546,11 @@ O_row(13, 'Gross profit', 'units', bold=True)
 O_fill(13, ALL, lambda c, p: f'={c}11-{c}12', F_NUM, bold=True)
 O_row(14, '  Gross margin', '%', italic=True)
 O_fill(14, ALL, lambda c, p: f'={c}13/{c}11', F_PCT)
-for row, label, key, akey in [(15, '(-) SG&A', 'sga', 'sga'), (16, '(-) R&D', 'rd', 'rd'), (17, '(-) Other operating expenses', 'oth', 'oth')]:
+for row, label, key, akey in [(15, '(-) SG&A', 'sga', 'sga'), (16, '(-) R&D', 'rd', 'rd'), (17, '(-) Other operating expenses (incl. SBC)', 'oth', 'oth')]:
     O_row(row, label, 'units')
-    O_fill(row, HC, HIST_LINK(key), F_NUM)
-    O_fill(row, FC, lambda c, p, ak=akey: f'={c}11*{ASM}{c}{A[ak]["live"]}', F_NUM)
-O_row(18, 'EBITDA (Adjusted, pre-SBC)', 'units', bold=True)
+    O_fill(row, HC, (lambda c, p: f'={HIST_LINK(key)(c, p)[1:]}+{HIST_LINK("sbc")(c, p)[1:]}') if key == 'oth' else HIST_LINK(key), F_NUM)
+    O_fill(row, FC, (lambda c, p, ak=akey: f'={c}11*({ASM}{c}{A[ak]["live"]}+{ASM}{c}{A["sbc"]["live"]})') if key == 'oth' else (lambda c, p, ak=akey: f'={c}11*{ASM}{c}{A[ak]["live"]}'), F_NUM)
+O_row(18, 'EBITDA (post-SBC, GAAP-style)', 'units', bold=True)
 O_fill(18, ALL, lambda c, p: f'={c}13-{c}15-{c}16-{c}17', F_NUM, bold=True)
 O_row(19, '  EBITDA margin', '%', italic=True)
 O_fill(19, ALL, lambda c, p: f'={c}18/{c}11', F_PCT)
@@ -519,7 +567,7 @@ O_row(24, 'NOPAT (EBIAT)', 'units', bold=True)
 O_fill(24, ALL, lambda c, p: f'={c}21-{c}23', F_NUM, bold=True)
 O_row(25, '  NOPAT margin', '%', italic=True)
 O_fill(25, ALL, lambda c, p: f'={c}24/{c}11', F_PCT)
-O_row(26, 'Memo: stock-based compensation', 'units', italic=True)
+O_row(26, 'Memo: stock-based compensation (in opex above)', 'units', italic=True)
 O_fill(26, HC, HIST_LINK('sbc'), F_NUM)
 O_fill(26, FC, lambda c, p: f'={c}11*{ASM}{c}{A["sbc"]["live"]}', F_NUM)
 O_row(27, '(-) Interest expense (average debt; BS schedule)', 'units')
@@ -529,12 +577,13 @@ O_row(28, 'Earnings before taxes', 'units', bold=True)
 O_fill(28, ALL, lambda c, p: f'={c}21-{c}27', F_NUM, bold=True)
 O_row(29, '(-) Cash taxes on EBT (effective rate)', 'units')
 O_fill(29, ALL, lambda c, p: f'={c}28*{ASM}$C$29', F_NUM)
-O_row(30, 'Net income (Adjusted)', 'units', bold=True)
+O_row(30, 'Net income (post-SBC)', 'units', bold=True)
 O_fill(30, ALL, lambda c, p: f'={c}28-{c}29', F_NUM, bold=True)
 O_row(31, '  Net margin', '%', italic=True)
 O_fill(31, ALL, lambda c, p: f'={c}30/{c}11', F_PCT)
-O_row(32, 'Diluted EPS (Adjusted)', CUR)
-O_fill(32, ALL, lambda c, p: f'={c}30/DCF_Valuation!$C${DIL_ROW}', F_PX)
+O_row(32, 'Diluted EPS (post-SBC)', CUR)
+O_fill(32, HC, lambda c, p: f'={c}30/DCF_Valuation!$F$104', F_PX)
+O_fill(32, FC + ['K'], lambda c, p: f'={c}30/DCF_Valuation!{c}104', F_PX)
 for row in (12, 15, 16, 17, 20, 26, 27):
     put(wsO, f'K{row}', f'=J{row}*(1+{GK})', F_NUM)
 wsO.freeze_panes = 'C6'
@@ -593,7 +642,7 @@ BS_fill(17, lambda c, p: f'={c}40', F_NUM)
 BS_row(18, 'TOTAL LIABILITIES', 'units', bold=True)
 BS_fill(18, lambda c, p: f'={c}15+{c}16+{c}17', F_NUM, bold=True)
 BS_row(20, 'Common & APIC (opening + NI + SBC - dividends)', 'units')
-BS_fill(20, lambda c, p: (HIST_LINK('equity')(c, p) if c in HC else f'={p}20+IS!{c}30+IS!{c}26+CFS!{c}15'), F_NUM)
+BS_fill(20, lambda c, p: (HIST_LINK('equity')(c, p) if c in HC else f'={p}20+IS!{c}30+IS!{c}26+CFS!{c}15+CFS!{c}21'), F_NUM)
 BS_row(21, 'Minority interest', 'units')
 for c in ALLBS:
     put(wsBS, f'{c}21', '=Assumptions!$C$26', F_NUM)
@@ -700,8 +749,10 @@ C_row(15, '(-) Dividends paid (payout input row 23)', 'units')
 C_fill(15, ALLCF, lambda c, p: f'=-$C$23*{c}7', F_NUM)
 C_row(16, '(+/-) Net borrowing / (repayment)', 'units')
 C_fill(16, ALLCF[1:], lambda c, p: (f'=BS!{c}39' if c in FC else f'=BS!{c}40-BS!{p}40'), F_NUM)
+C_row(21, '(-) Share repurchases (from DCF)', 'units')
+C_fill(21, FC, lambda c, p: f'=-DCF_Valuation!{c}102', F_NUM)
 C_row(17, 'Net change in cash', 'units', bold=True)
-C_fill(17, ALLCF[1:], lambda c, p: f'={c}13+{c}15+{c}16', F_NUM, bold=True)
+C_fill(17, ALLCF[1:], lambda c, p: f'={c}13+{c}15+{c}16' + (f'+{c}21' if c in FC else ''), F_NUM, bold=True)
 C_row(18, 'Opening cash', 'units')
 C_fill(18, ALLCF[1:], lambda c, p: (f'=BS!{p}7' if c == 'F' else f'={p}19'), F_NUM)
 C_row(19, 'Closing cash (rolls the BS cash balance)', 'units', bold=True)
@@ -834,7 +885,7 @@ sub_r = 6
 lab(wsC2, sub_r, 'Subject company', bold=True)
 put(wsC2, f'B{sub_r}', '=Assumptions!C8', None, color=BLACK)
 put(wsC2, f'C{sub_r}', '=Assumptions!C17', F_PX)
-put(wsC2, f'D{sub_r}', f'=DCF_Valuation!C{DIL_ROW}', F_NUM)
+put(wsC2, f'D{sub_r}', '=DCF_Valuation!$F$104', F_NUM)
 put(wsC2, f'E{sub_r}', f'=C{sub_r}*D{sub_r}', F_NUM)
 put(wsC2, f'F{sub_r}', '=Assumptions!C24-Assumptions!C25', F_NUM)
 put(wsC2, f'G{sub_r}', f'=E{sub_r}+F{sub_r}', F_NUM)
@@ -872,11 +923,11 @@ for c, t in zip(['D','E'], ['Peer median', 'Peer mean']):
     put(wsC2, f'{c}16', t, kind='label', bold=True, align='right')
 NC = '(Assumptions!$C$24-Assumptions!$C$25-Assumptions!$C$26-Assumptions!$C$27)'
 lab(wsC2, 17, 'EV/EBITDA FY26E x peer multiple -> price', 'x')
-put(wsC2, 'D17', f'=($K${MED}*IS!F18-{NC})/DCF_Valuation!$C${DIL_ROW}', F_PX)
-put(wsC2, 'E17', f'=($K${MEAN}*IS!F18-{NC})/DCF_Valuation!$C${DIL_ROW}', F_PX)
+put(wsC2, 'D17', f'=($K${MED}*IS!F18-{NC})/DCF_Valuation!$F$104', F_PX)
+put(wsC2, 'E17', f'=($K${MEAN}*IS!F18-{NC})/DCF_Valuation!$F$104', F_PX)
 lab(wsC2, 18, 'P/E FY25 x peer multiple -> price', 'x')
-put(wsC2, 'D18', f'=$M${MED}*IS!E30/DCF_Valuation!$C${DIL_ROW}', F_PX)
-put(wsC2, 'E18', f'=$M${MEAN}*IS!E30/DCF_Valuation!$C${DIL_ROW}', F_PX)
+put(wsC2, 'D18', f'=$M${MED}*IS!E30/DCF_Valuation!$F$104', F_PX)
+put(wsC2, 'E18', f'=$M${MEAN}*IS!E30/DCF_Valuation!$F$104', F_PX)
 lab(wsC2, 19, 'Memo: peer FY26E EV/EBITDA multiple (median | mean)', 'x', italic=True)
 put(wsC2, 'D19', f'=$K${MED}', F_X)
 put(wsC2, 'E19', f'=$K${MEAN}', F_X)
@@ -914,7 +965,7 @@ dv_list(wsD, 'C17', ['Yes', 'No'])
 lab(wsD, 18, 'Discount-period shift (0.5 if mid-year)', 'years')
 put(wsD, 'C18', '=IF(C17="Yes",0.5,0)', '0.0')
 for r, l, f, fm in [(19, 'WACC (live scenario)', f'={WACC_LIVE}', F_PCT2), (20, 'Terminal growth rate (g)', '=Assumptions!C33', F_PCT2),
-                    (21, 'Exit EV / EBITDA multiple', '=Assumptions!C34', F_X), (22, 'SBC treated as cash cost?', '=Assumptions!C13', None),
+                    (21, 'Exit EV / EBITDA multiple', '=Assumptions!C34', F_X), (22, 'SBC included in opex (GAAP-style)', 'Yes', None),
                     (23, 'Weight on Gordon Growth in blended value', '=Assumptions!C35', F_PCT)]:
     lab(wsD, r, l)
     put(wsD, f'C{r}', f, fm)
@@ -924,7 +975,7 @@ yr_labels(wsD, 26, 'Assumptions!$C$12')
 OMr = 'IS!'
 ufcf = [
     (27, 'Revenue', lambda c, p: f'={OMr}{c}11', F_NUM, ALL, False),
-    (28, 'EBITDA (Adjusted)', lambda c, p: f'={OMr}{c}18', F_NUM, ALL, False),
+    (28, 'EBITDA (post-SBC)', lambda c, p: f'={OMr}{c}18', F_NUM, ALL, False),
     (29, '  EBITDA margin', lambda c, p: f'={c}28/{c}27', F_PCT, ALL, False),
     (30, 'EBIT', lambda c, p: f'={OMr}{c}21', F_NUM, ALL, False),
     (31, '(-) Cash taxes on EBIT', lambda c, p: f'=-{OMr}{c}23', F_NUM, ALL, False),
@@ -932,7 +983,7 @@ ufcf = [
     (33, '(+) Depreciation & amortization', lambda c, p: f'={OMr}{c}20', F_NUM, ALL, False),
     (34, '(-) Capital expenditures', lambda c, p: f'=-BS!{c}32', F_NUM, ALL[:-1], False),
     (35, '(-) Increase in net working capital', lambda c, p: f'=-(BS!{c}26-BS!{p}26)', F_NUM, ALL[1:-1], False),
-    (36, '(-) Stock-based compensation (if cash cost)', lambda c, p: f'=-{OMr}{c}26*IF($C$22="Yes",1,0)', F_NUM, ALL, False),
+    (36, 'Memo: SBC already in EBITDA (no double-count)', lambda c, p: '=0', F_NUM, ALL, False),
     (37, 'Unlevered free cash flow (UFCF)', lambda c, p: f'=SUM({c}32:{c}36)', F_NUM, ALL[1:], True),
     (38, '  FCF conversion (UFCF / EBITDA)', lambda c, p: f'={c}37/{c}28', F_PCT, ALL[1:], False),
     (39, '  UFCF growth', lambda c, p: f'={c}37/{p}37-1', F_PCT, ALL[2:], False),
@@ -941,8 +992,8 @@ for r, l, fn, fm, cols, bd in ufcf:
     lab(wsD, r, l, 'units' if fm == F_NUM else '%', bold=bd)
     for c in cols:
         put(wsD, f'{c}{r}', fn(c, pv(c)), fm, bold=bd)
-put(wsD, 'K34', '=-BS!J32*(1+Assumptions!$C$33)', F_NUM)   # terminal CapEx = FY30E x (1+g)
-put(wsD, 'K35', '=-(BS!J26*Assumptions!$C$33)', F_NUM)     # terminal NWC build = FY30E NWC x g
+put(wsD, 'K34', '=-(K32*Assumptions!$C$33/Assumptions!$C$37)', F_NUM)  # terminal reinvestment = g / ROIC x NOPAT
+put(wsD, 'K35', '=0', F_NUM)  # NWC build folded into ROIC-driven reinvestment above
 assert DCF_UFCF_ROW == 37
 
 band(wsD, 41, 'DISCOUNTING MECHANICS')
@@ -998,14 +1049,14 @@ br = [
     (62, '(-) Total debt', 'units', lambda c: '=-Assumptions!$C$24', F_NUM, False),
     (63, '(-) Preferred stock & minority interest', 'units', lambda c: '=-(Assumptions!$C$26+Assumptions!$C$27)', F_NUM, False),
     (64, 'Implied equity value', 'units', lambda c: f'=SUM({c}60:{c}63)', F_NUM, True),
-    (65, '(\u00f7) Diluted shares outstanding (TSM)', 'mm', lambda c: f'=$C${DIL_ROW}', F_NUM, False),
+    (65, '(\u00f7) Diluted shares outstanding (TSM)', 'mm', lambda c: '=$F$104', F_NUM, False),
     (66, 'Implied intrinsic value per share', CUR, lambda c: f'={c}64/{c}65', F_PX, True),
     (67, 'Current share price', CUR, lambda c: '=Assumptions!$C$17', F_PX, False),
     (68, 'Upside / (downside)', '%', lambda c: f'={c}66/{c}67-1', F_PCT, True),
     (69, 'Terminal value as % of EV', '%', lambda c: f'={c}59/{c}60', F_PCT, False),
     (70, 'Implied EV / EBITDA (last historical year)', 'x', lambda c: f'={c}60/{OMr}$E$18', F_X, False),
     (71, 'Implied EV / EBITDA (FY26E)', 'x', lambda c: f'={c}60/{OMr}$F$18', F_X, False),
-    (72, 'Implied P/E (FY26E EPS)', 'x', lambda c: f'={c}66/$F$85', F_X, False),
+    (72, 'Implied P/E (FY26E EPS)', 'x', lambda c: f'={c}66/$F$104', F_X, False),
 ]
 for r, l, u, fn, fm, bd in br:
     lab(wsD, r, l, u, bold=bd)
@@ -1033,18 +1084,10 @@ for r, ar in [(78, 21), (79, 22), (80, 23)]:
     put(wsD, f'D{r}', f'=Assumptions!D{ar}', F_PX)
     put(wsD, f'E{r}', f'=IF($C$75>D{r},"Yes","No")', None, align='right')
     put(wsD, f'F{r}', f'=IF($C$75>D{r},C{r}*(1-D{r}/$C$75),0)', F_NUM)
-lab(wsD, 81, 'Diluted shares outstanding', 'mm', bold=True)
+lab(wsD, 81, 'Diluted shares outstanding (basic + TSM)', 'mm', bold=True)
 put(wsD, 'C81', '=C76+SUM(F77:F80)', F_NUM, bold=True)
 assert DIL_ROW == 81
-
-band(wsD, 83, 'MEMO: EARNINGS FOR IMPLIED P/E  [ (EBIT - SBC - interest) x (1 - tax) ]')
-yr_labels(wsD, 83, 'Assumptions!$C$12', cols=['E', 'F'])
-lab(wsD, 84, 'Net income (approximate)', 'units')
-lab(wsD, 85, 'EPS on diluted shares', CUR)
-for c in ('E', 'F'):
-    put(wsD, f'{c}84', f'=({OMr}{c}21-{OMr}{c}26-BS!{c}42)*(1-Assumptions!$C$29)', F_NUM)
-    put(wsD, f'{c}85', f'={c}84/$C$81', F_PX)
-
+# share repurchases & rolling diluted shares placed at rows 100-105 (rows 83-85 are the EPS memo)
 band(wsD, 87, 'TERMINAL-YEAR CONVERGENCE CHECK (reinvestment vs. growth)')
 cv = [
     (88, 'Terminal NOPAT (FY31E)', '=K32', F_NUM),
@@ -1094,7 +1137,7 @@ def sblock(i, s, b):
         if isF:
             put(wsS, f'{c}{b + 1}', f'=Assumptions!{c}{A["rg"][s]}', F_PCT)
             put(wsS, f'{c}{b + 3}', f'=Assumptions!{c}{A["gm"][s]}', F_PCT)
-            put(wsS, f'{c}{b + 4}', f'={c}{b + 3}-Assumptions!{c}{A["sga"][s]}-Assumptions!{c}{A["rd"][s]}-Assumptions!{c}{A["oth"][s]}', F_PCT)
+            put(wsS, f'{c}{b + 4}', f'={c}{b + 3}-Assumptions!{c}{A["sga"][s]}-Assumptions!{c}{A["rd"][s]}-Assumptions!{c}{A["oth"][s]}-Assumptions!{c}{A["sbc"][s]}', F_PCT)
             put(wsS, f'{c}{b + 6}', f'={c}{b + 2}*Assumptions!{c}{A["da"][s]}', F_NUM)
             put(wsS, f'{c}{b + 10}', f'={c}{b + 2}*Assumptions!{c}{A["sbc"][s]}', F_NUM)
             put(wsS, f'{c}{b + 11}', f'={c}{b + 2}*(Assumptions!{c}{A["mcx"][s]}+Assumptions!{c}{A["gcx"][s]})', F_NUM)
@@ -1119,7 +1162,7 @@ def sblock(i, s, b):
         put(wsS, f'{c}{b + 8}', f'={c}{b + 7}*Assumptions!$C$29', F_NUM)
         put(wsS, f'{c}{b + 9}', f'={c}{b + 7}-{c}{b + 8}', F_NUM)
         put(wsS, f'{c}{b + 13}', f'={c}{b + 12}-{p}{b + 12}', F_NUM)
-        put(wsS, f'{c}{b + 14}', f'={c}{b + 9}+{c}{b + 6}-{c}{b + 11}-{c}{b + 13}-{c}{b + 10}*IF(Assumptions!$C$13="Yes",1,0)', F_NUM, bold=True)
+        put(wsS, f'{c}{b + 14}', f'={c}{b + 9}+{c}{b + 6}-{c}{b + 11}-{c}{b + 13}', F_NUM, bold=True)
     sc = [
         (b + 17, 'WACC (WACC tab)', f'=WACC!$N${43 + i}', F_PCT2),
         (b + 18, 'Sum of PV of explicit UFCF', f'=SUM(F{b + 16}:J{b + 16})', F_NUM),
@@ -1151,9 +1194,9 @@ for i, s in enumerate(SK):
     put(wsS, f'I{r}', f'=C{b + 24}', F_NUM)
     put(wsS, f'J{r}', f'=C{b + 25}', F_NUM, bold=True)
     put(wsS, f'K{r}', f'=J{r}+{NC}', F_NUM)
-    put(wsS, f'L{r}', f'=(H{r}+{NC})/DCF_Valuation!$C${DIL_ROW}', F_PX)
-    put(wsS, f'M{r}', f'=(I{r}+{NC})/DCF_Valuation!$C${DIL_ROW}', F_PX)
-    put(wsS, f'N{r}', f'=K{r}/DCF_Valuation!$C${DIL_ROW}', F_PX, bold=True)
+    put(wsS, f'L{r}', f'=(H{r}+{NC})/DCF_Valuation!$F$104', F_PX)
+    put(wsS, f'M{r}', f'=(I{r}+{NC})/DCF_Valuation!$F$104', F_PX)
+    put(wsS, f'N{r}', f'=K{r}/DCF_Valuation!$F$104', F_PX, bold=True)
     put(wsS, f'O{r}', f'=N{r}/Assumptions!$C$17-1', F_PCT)
     put(wsS, f'P{r}', f'=1-C{b + 18}/C{b + 25}', F_PCT)
     put(wsS, f'Q{r}', f'=IF(Assumptions!$C$5=$A{r},"ACTIVE","")', None, bold=True, align='right')
@@ -1181,12 +1224,12 @@ band(wsT, 4, 'BASE INPUTS (LIVE LINKS - do not overwrite)', c2='P')
 si = [
     (5, 'WACC (live scenario)', f'={WACC_LIVE}', F_PCT2), (6, 'Terminal growth rate (g)', '=Assumptions!C33', F_PCT2),
     (7, 'Exit EV / EBITDA multiple', '=Assumptions!C34', F_X), (8, 'Current share price', '=Assumptions!C17', F_PX),
-    (9, 'Diluted shares (mm)', f'=DCF_Valuation!C{DIL_ROW}', F_NUM),
+    (9, 'Diluted shares (mm)', '=DCF_Valuation!$F$104', F_NUM),
     (10, 'Net claims (cash - debt - pref - minority)', '=DCF_Valuation!C61+DCF_Valuation!C62+DCF_Valuation!C63', F_NUM),
     (11, 'Mid-year shift (years)', '=DCF_Valuation!C18', '0.0'), (12, 'Number of explicit years (N)', '=DCF_Valuation!J42', '0'),
     (13, 'Weight on Gordon method (Table 3 blend)', '=Assumptions!C35', F_PCT), (14, 'FY30E EBITDA', '=IS!J18', F_NUM),
-    (15, 'Terminal base flow A = NOPAT + D&A - CapEx - SBC (FY30E)', '=DCF_Valuation!J32+DCF_Valuation!J33+DCF_Valuation!J34+DCF_Valuation!J36', F_NUM),
-    (16, 'FY30E net working capital', '=BS!J26', F_NUM), (17, 'Effective tax rate', '=Assumptions!C29', F_PCT),
+    (15, 'Terminal base flow A = terminal UFCF x (1+g) adjusted (ROIC-driven)', '=DCF_Valuation!K37/(1+Assumptions!$C$33)', F_NUM),
+    (16, 'NWC build (folded into ROIC reinvestment)', '=0', F_NUM), (17, 'Effective tax rate', '=Assumptions!C29', F_PCT),
     (18, 'FY30E EBITDA margin', '=IS!J19', F_PCT),
 ]
 for r, l, f, fm in si:
@@ -1243,14 +1286,14 @@ for c, k in zip(cols5, offs):
 band(wsT, 52, 'HELPER ROWS FOR TABLE 3 (revenue / NWC paths per growth spread; closed-form PV components)', c2='P')
 yr_labels(wsT, 52, 'Assumptions!$C$12', cols=FC, band_row=True)
 lab(wsT, 53, 'Discount factor (live WACC)')
-lab(wsT, 54, 'After-tax cash margin before NWC: c_t = (m - da)(1-t) + da - capex% - SBC%')
+lab(wsT, 54, 'After-tax cash margin before NWC: c_t = (m - da)(1-t) + da - capex% (post-SBC)')
 lab(wsT, 55, 'Margin-spread ramp (t / N)')
 lab(wsT, 56, 'NWC % of revenue (k_t)')
 lab(wsT, 57, 'Live revenue growth')
 for c in FC:
     put(wsT, f'{c}53', f'=1/(1+$C$5)^{c}26', F_FAC)
     put(wsT, f'{c}54', (f'=({OMr}{c}19-{OMr}{c}20/{OMr}{c}11)*(1-$C$17)+{OMr}{c}20/{OMr}{c}11-BS!{c}32/{OMr}{c}11'
-                        f'-{OMr}{c}26/{OMr}{c}11*IF(Assumptions!$C$13="Yes",1,0)'), '0.0000')
+                        f'-{OMr}{c}26/{OMr}{c}11*0'), '0.0000')
     put(wsT, f'{c}55', f'=DCF_Valuation!{c}42/$C$12', '0.00')
     put(wsT, f'{c}56', f'=BS!{c}26/{OMr}{c}11', F_PCT)
     put(wsT, f'{c}57', f'={OMr}{c}10', F_PCT)
@@ -1318,6 +1361,102 @@ put(wsD, 'C12', '=IF(AND(C5="OK",C6="OK",C7="OK",C9="OK",C10="OK",C11="OK"),IF(C
 wsD.freeze_panes = 'C4'
 
 # =====================================================================================
+# SHARE REPURCHASES & ROLLING DILUTED SHARES (rows 100-105)
+# =====================================================================================
+band(wsD, 100, 'SHARE REPURCHASES & ROLLING DILUTED SHARE COUNT', c2='K')
+lab(wsD, 101, 'Repurchase budget (% of UFCF; editable)', '%')
+put(wsD, 'C101', 0.25, F_PCT, kind='input', fill=YEL)
+lab(wsD, 102, 'Share repurchases ($)', 'units')
+for c in FC:
+    put(wsD, f'{c}102', f'=MAX(0,{c}37*$C$101)', F_NUM)
+lab(wsD, 103, 'Shares repurchased (mm)', 'mm')
+for c in FC:
+    put(wsD, f'{c}103', f'={c}102/Assumptions!$C$17', F_NUM)
+lab(wsD, 104, 'Rolling diluted shares (mm)', 'mm', bold=True)
+for i, c in enumerate(FC):
+    prev = f'$C${DIL_ROW}' if i == 0 else f'{pv(c)}104'
+    put(wsD, f'{c}104', f'={prev}-{c}103', F_NUM, bold=True)
+put(wsD, 'K104', '=J104', F_NUM, bold=True)
+for c in FC:
+    wsC[f'{c}21'] = f'=-DCF_Valuation!{c}102'
+
+# =====================================================================================
+# SUPPORTING TABS: PRECEDENTS / RISKS / CONTROLS / VERSION LOG
+# =====================================================================================
+wsP = WS['Precedents']
+title(wsP, 'Precedents - M&A Multiples (editable; illustrative placeholders)')
+put(wsP, 'A2', 'Replace placeholders with real precedent transactions (announced deals in the sector). Not fetched from Yahoo.', kind='calc', italic=True)
+band(wsP, 4, 'PRECEDENT TRANSACTIONS', c2='K')
+for c, t in zip('ABCDEF', ['Target', 'Acquirer', 'Announced', 'EV ($m)', 'EBITDA LTM ($m)', 'EV/EBITDA']):
+    put(wsP, f'{c}5', t, kind='label', bold=True)
+for i in range(8):
+    r = 6 + i
+    lab(wsP, r, f'  Transaction {i + 1} (replace)')
+    for c in 'BC':
+        put(wsP, f'{c}{r}', 'REPLACE', kind='input', fill=YEL)
+    put(wsP, f'D{r}', 1000.0, F_NUM, kind='input', fill=YEL)
+    put(wsP, f'E{r}', 100.0, F_NUM, kind='input', fill=YEL)
+    put(wsP, f'F{r}', f'=D{r}/E{r}', F_X)
+lab(wsP, 15, 'Median precedent EV/EBITDA', bold=True)
+put(wsP, 'F15', '=MEDIAN(F6:F13)', F_X, bold=True)
+lab(wsP, 16, 'Implied price from median precedent (EV/EBITDA x FY26E EBITDA)', None)
+put(wsP, 'F16', '=(F15*IS!F18-(Assumptions!C24-Assumptions!C25-Assumptions!C26-Assumptions!C27))/DCF_Valuation!$F$104', F_PX, bold=True)
+wsP.freeze_panes = 'C6'
+
+wsR = WS['Risks']
+title(wsR, 'Risks - Company-Specific Risk Register (seeded from dataset)')
+put(wsR, 'A2', 'Seeded from ticker_full_dataset_v2.csv. Analyst adds probability, impact and mitigation; links to valuation via WACC/ROIC overrides.', kind='calc', italic=True)
+band(wsR, 4, 'RISK REGISTER', c2='H')
+for c, t in zip('ABCDEF', ['#', 'Risk', 'Likelihood (1-5)', 'Impact (1-5)', 'Mitigation / watch item', 'Valuation link']):
+    put(wsR, f'{c}5', t, kind='label', bold=True)
+for i in range(6):
+    r = 6 + i
+    put(wsR, f'A{r}', i + 1, '0', kind='label')
+    put(wsR, f'B{r}', f'Risk {i + 1} (from dataset)', kind='input', fill=YEL)
+    put(wsR, f'C{r}', 3, '0', kind='input', fill=YEL)
+    put(wsR, f'D{r}', 3, '0', kind='input', fill=YEL)
+    put(wsR, f'E{r}', 'REPLACE', kind='input', fill=YEL)
+    put(wsR, f'F{r}', 'WACC / margin / growth', kind='label')
+wsR.freeze_panes = 'C6'
+
+wsK = WS['Controls']
+title(wsK, 'Controls - Model Integrity Dashboard')
+put(wsK, 'A2', '="Live checks from DCF_Valuation + BS / CFS / Segments. All must read OK before the model is circulated."', kind='calc', italic=True)
+band(wsK, 4, 'CONTROL CHECKS', c2='H')
+checks_ctrl = [
+    (6, 'Formula errors (all tabs)', "=DCF_Valuation!C5"),
+    (7, 'Scenario probabilities = 100%', "=DCF_Valuation!C6"),
+    (8, 'WACC > g', "=DCF_Valuation!C7"),
+    (9, 'Terminal ROIC vs WACC', "=DCF_Valuation!C8"),
+    (10, 'BS balance = 0 (all years)', "=DCF_Valuation!C9"),
+    (11, 'CFS closes to BS (all years)', "=DCF_Valuation!C10"),
+    (12, 'Sensitivity ties to DCF', "=DCF_Valuation!C11"),
+    (13, 'Segment mix = 100% (all years)', '=IF(SUMPRODUCT(--(Segments!F19:J19="OK"))=5,"OK","ERROR")'),
+    (14, 'Segment revenue ties to IS', '=IF(SUMPRODUCT(ABS(Segments!F38:J38))<0.5,"OK","ERROR")'),
+    (15, 'Segment EBITDA ties to IS', '=IF(SUMPRODUCT(ABS(Segments!F48:J48))<0.5,"OK","ERROR")'),
+    (16, 'Listing coverage semi-annual', '=IF(OR(CFS!F20="OK",IS!E32>0),"OK","ERROR")'),
+]
+for r, l, f in checks_ctrl:
+    lab(wsK, r, l)
+    put(wsK, f'C{r}', f, None, bold=True, align='right')
+lab(wsK, 18, 'OVERALL CONTROL STATUS', bold=True)
+put(wsK, 'C18', '=IF(COUNTIF(C6:C16,"ERROR")=0,"ALL CONTROLS PASSED","REVIEW CONTROLS")', None, bold=True, align='right')
+wsK.freeze_panes = 'C6'
+
+wsV = WS['Version_Log']
+title(wsV, 'Version Log - Analyst Change History')
+put(wsV, 'A2', 'Record every material change: date, analyst, what changed, reason/approval.', kind='calc', italic=True)
+band(wsV, 4, 'CHANGE HISTORY', c2='H')
+for c, t in zip('ABCD', ['Date', 'Analyst', 'Change made', 'Approval / source']):
+    put(wsV, f'{c}5', t, kind='label', bold=True)
+for i in range(12):
+    r = 6 + i
+    put(wsV, f'A{r}', '2026-11-17' if i == 0 else '', None, kind='input', fill=YEL)
+    for c in 'BCD':
+        put(wsV, f'{c}{r}', 'Initial model build' if (i == 0 and c == 'C') else '', kind='input', fill=YEL)
+wsV.freeze_panes = 'C6'
+
+# =====================================================================================
 # 1. COVER - EQUITY RESEARCH SUMMARY (sell-side format)
 # =====================================================================================
 wsB = WS['Cover']
@@ -1345,7 +1484,7 @@ snap = [
     (16, 'Implied net debt / EBITDA (FY25)', '=(Assumptions!C24-Assumptions!C25)/IS!E18', F_X),
     (17, 'Implied EV / Revenue (FY26E)', '=DCF_Valuation!E60/IS!F11', F_X),
     (18, 'Net debt (latest actual)', '=Assumptions!C24-Assumptions!C25', F_NUM),
-    (19, 'Diluted shares outstanding (TSM)', f'=DCF_Valuation!C{DIL_ROW}', '#,##0.0 "mm"'),
+    (19, 'Diluted shares outstanding (TSM)', '=DCF_Valuation!$F$104', '#,##0.0 "mm"'),
 ]
 for r, l, f, fm in snap:
     lab(wsB, r, l)
@@ -1414,7 +1553,7 @@ kp = [
     (47, 'FCF conversion (avg UFCF / EBITDA, FY26E-FY30E)', '=SUM(DCF_Valuation!F37:J37)/SUM(DCF_Valuation!F28:J28)', F_PCT),
     (48, 'FY30E UFCF', '=DCF_Valuation!J37', F_NUM), (49, 'WACC', f'={WACC_LIVE}', F_PCT2),
     (50, 'Terminal value as % of EV (blended)', '=DCF_Valuation!E69', F_PCT),
-    (51, 'Diluted shares outstanding (TSM)', f'=DCF_Valuation!C{DIL_ROW}', '#,##0.0 "mm"'),
+    (51, 'Diluted shares outstanding (TSM)', '=DCF_Valuation!$F$104', '#,##0.0 "mm"'),
 ]
 for r, l, f, fm in kp:
     lab(wsB, r, l)
@@ -1612,7 +1751,8 @@ for _ws in WS.values():
     _ws['A3'].value = None
     for _r in (1, 2, 3):
         _ws.row_dimensions[_r].hidden = True
-    _ws.print_area = f'A4:{get_column_letter(_ws.max_column)}{_ws.max_row}'
+    if _ws.max_row >= 4:
+        _ws.print_area = f'A4:{get_column_letter(_ws.max_column)}{_ws.max_row}'
 wb.properties.title = 'DCF Valuation Template'
 if globals().get('HOOK'):
     HOOK(wb, globals())   # lets the app pre-fill inputs for a ticker

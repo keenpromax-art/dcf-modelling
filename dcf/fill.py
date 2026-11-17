@@ -11,6 +11,19 @@ def make_hook(d, rf):
         ad = g['apply_delta']                                  # Base path + scenario delta x shape
         ws, wm, ww, wd = wb['Assumptions'], wb['Macro_Scenarios'], wb['WACC'], wb['DCF_Valuation']
         h, rev = d['hist'], d['hist']['rev']
+        # segment names + revenue mix from the curated dataset (CSV); equal-weight fallback
+        wsg = wb['Segments']
+        ref = d.get('ref') or {}
+        segs = [s[:44] for s in (ref.get('b') or [])][:6]
+        if not segs:
+            segs = ['Total company']
+        for i, nm in enumerate(segs):
+            for row in (9 + i, 23 + i, 31 + i, 41 + i):
+                wsg[f'A{row}'] = nm
+            mix = round(1.0 / len(segs), 5)
+            for j, c in enumerate('FGHIJ'):
+                wsg[f'{c}{9 + i}'] = mix if i < len(segs) - 1 else round(1.0 - mix * (len(segs) - 1), 5)
+                wsg[f'{c}{23 + i}'] = f'=IS!{c}19'   # default: company margin; analyst overrides per segment; total ties exactly
         used = {}
 
         def setc(ref, val, label=None):
@@ -82,9 +95,22 @@ def make_hook(d, rf):
                 wm[f'{c}{Mx["rf"][s]}'] = round(rfv[s][i], 4)
         used['Risk-free (10Y)'] = round(rf, 4)
         own = (d['name'] + ' (subject co. - replace with real peers)', d['ticker'], d['beta'], d['de'])
-        for i in range(5):                                   # placeholder peer set = the company itself
+        ref = d.get('ref') or {}
+        peers = [p[0] for p in (ref.get('p') or [])][:5]
+        for i in range(5):                                   # curated peer tickers from CSV; fallback = company itself
             r = 6 + i
-            ww[f'A{r}'] = own[0]; ww[f'B{r}'] = own[1]; ww[f'C{r}'] = round(own[2], 2); ww[f'D{r}'] = round(own[3], 3); ww[f'E{r}'] = C.MARGINAL_TAX
-        wb.calculation.fullCalcOnLoad = True
+            nm = (ref.get('p') or [])[i][1] if i < len(ref.get('p') or []) else own[0]
+            tk = peers[i] if i < len(peers) else own[1]
+            ww[f'A{r}'] = nm; ww[f'B{r}'] = tk; ww[f'C{r}'] = round(own[2], 2); ww[f'D{r}'] = round(own[3], 3); ww[f'E{r}'] = C.MARGINAL_TAX
+        # Risks tab seeded from curated dataset
+        wr = wb['Risks']
+        for i, rtext in enumerate((ref.get('r') or [])[:6]):
+            wr[f'B{6 + i}'] = rtext[:90]
+        # Comps peer tickers seeded from curated dataset
+        wc = wb['Comps']
+        for i in range(5):
+            if i < len(peers):
+                wc[f'B{7 + i}'] = peers[i]
+                wb.calculation.fullCalcOnLoad = True
         d['_used'] = used
     return hook
