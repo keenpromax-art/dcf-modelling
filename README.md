@@ -1,6 +1,7 @@
 # Ticker → DCF (Streamlit)
 
 Enter a ticker, download a fully formula-driven 8-tab Excel DCF
+with **23 scenarios** (Bear / Base / Bull + 20 macro & company regimes, library in `Assumptions!N5:O27`)
 (Dashboard · Assumptions · Macro_Scenarios · Operating_Model · WACC · DCF_Valuation · Scenario_Valuation · Sensitivity_Analysis).
 The web page asks **only for the ticker**; all DCF inputs are edited in Excel afterwards.
 

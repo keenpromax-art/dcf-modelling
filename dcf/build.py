@@ -41,10 +41,18 @@ def preview(path):
         return None
     wb = load_workbook(f, data_only=True)
     sv, dcf, om, st_, asm = wb['Scenario_Valuation'], wb['DCF_Valuation'], wb['Operating_Model'], wb['Sensitivity_Analysis'], wb['Assumptions']
-    names = [sv.cell(r, 1).value for r in range(6, 29)] + ['Probability-weighted']
+    names = []
+    for r in range(5, 100):                                   # static scenario library in Assumptions!N5:N... (never formulas)
+        v = asm.cell(r, 14).value
+        if v is None or str(v).strip() == '':
+            break
+        names.append(str(v).strip())
+    if not names:                                             # fallback: cached formula results, then generic labels
+        names = [str(sv.cell(r, 1).value).strip() for r in range(6, 29) if sv.cell(r, 1).value] or [f'Scenario {i + 1}' for i in range(23)]
+    names = names + ['Probability-weighted']
     cols = {'Probability': 'C', 'Revenue CAGR': 'D', 'FY30E EBITDA margin': 'E', 'FY30E UFCF': 'F', 'WACC': 'G', 'Enterprise value': 'J',
             'Equity value': 'K', 'Price (Gordon)': 'L', 'Price (Exit)': 'M', 'Price (blended)': 'N', 'Upside / (downside)': 'O', 'TV % of EV': 'P'}
-    scen = pd.DataFrame({k: [_f(sv[f'{c}{r}'].value) for r in range(6, 30)] for k, c in cols.items()}, index=names)
+    scen = pd.DataFrame({k: [_f(sv[f'{c}{r}'].value) for r in range(6, 6 + len(names))] for k, c in cols.items()}, index=names)
     g_axis = [_f(st_.cell(29, c).value) for c in range(3, 8)]
     w_axis = [_f(st_.cell(r, 2).value) for r in range(30, 35)]
     sens = [(w, g, _f(st_.cell(30 + i, 3 + j).value)) for i, w in enumerate(w_axis) for j, g in enumerate(g_axis)]

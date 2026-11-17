@@ -35,6 +35,14 @@ def card(label, value, sub='', cls=''):
     return f'<div class="card"><div class="lbl">{label}</div><div class="val {cls}">{value}</div><div class="sub">{sub}</div></div>'
 
 
+def sget(sc, row, col):
+    try:
+        v = sc.loc[row, col]
+        return float(v) if v == v else None
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def money(v, ccy=''):
     if v is None:
         return 'n/a'
@@ -60,7 +68,7 @@ with st.sidebar:
 
 # ------------------------------------------------------------------ hero + input
 st.markdown('<div class="hero"><h1>Ticker \u2192 DCF Valuation Workbook</h1>'
-            '<p>Enter a ticker. Get an institutional-style, fully formula-driven Excel DCF with Bear / Base / Bull scenarios, WACC build and sensitivity tables.</p></div>',
+            '<p>Enter a ticker. Get an institutional-style, fully formula-driven Excel DCF with 23 macro scenarios (Bear / Base / Bull + 20 regimes), WACC build and sensitivity tables.</p></div>',
             unsafe_allow_html=True)
 
 
@@ -126,12 +134,12 @@ st.markdown(chips, unsafe_allow_html=True)
 k = st.columns(5)
 k[0].markdown(card('Share price', f'{d["price"]:,.2f}', d['price_ccy'] or ccy), unsafe_allow_html=True)
 k[1].markdown(card('Market cap', money(d['market_cap']), f'{d["shares"]:,.0f}m shares'), unsafe_allow_html=True)
-if prev:
+if prev and 'Base' in prev['scen'].index:
     sc = prev['scen']
-    base_px, up = sc.loc['Implied share price', 'Base'], sc.loc['Upside / (downside)', 'Base']
-    k[2].markdown(card('Base-case value / share', f'{base_px:,.2f}', 'blended DCF'), unsafe_allow_html=True)
-    k[3].markdown(card('Upside / (downside)', f'{up:+.1%}', 'vs. current price', 'up' if up >= 0 else 'down'), unsafe_allow_html=True)
-    k[4].markdown(card('Base WACC', f'{sc.loc["WACC", "Base"]:.2%}', f'Rf {res["rf"]:.2%}'), unsafe_allow_html=True)
+    base_px, up, base_wacc = sget(sc, 'Base', 'Price (blended)'), sget(sc, 'Base', 'Upside / (downside)'), sget(sc, 'Base', 'WACC')
+    k[2].markdown(card('Base-case value / share', f'{base_px:,.2f}' if base_px is not None else 'n/a', 'blended DCF'), unsafe_allow_html=True)
+    k[3].markdown(card('Upside / (downside)', f'{up:+.1%}' if up is not None else 'n/a', 'vs. current price', 'up' if (up or 0) >= 0 else 'down'), unsafe_allow_html=True)
+    k[4].markdown(card('Base WACC', f'{base_wacc:.2%}' if base_wacc is not None else 'n/a', f'Rf {res["rf"]:.2%}'), unsafe_allow_html=True)
 else:
     k[2].markdown(card('Revenue FY%d' % d['last_fy'], money(hist['rev'][2]), ''), unsafe_allow_html=True)
     k[3].markdown(card('Adj. EBITDA margin', f'{ebitda_hist[2]/hist["rev"][2]:.1%}', ''), unsafe_allow_html=True)
@@ -152,38 +160,43 @@ with t1:
         st.info('Results preview needs LibreOffice on the server (it is optional). Download the workbook to see the full valuation in Excel.')
     else:
         sc = prev['scen']
+        n_sc = len(sc) - 1
+        mc = st.columns(4)
+        for col, nm in zip(mc, ['Bear', 'Base', 'Bull', 'Probability-weighted']):
+            p, u_ = sget(sc, nm, 'Price (blended)'), sget(sc, nm, 'Upside / (downside)')
+            col.metric(nm if nm != 'Probability-weighted' else 'Prob-weighted',
+                       f'{p:,.2f}' if p is not None else 'n/a', f'{u_:+.1%}' if u_ is not None else None)
         a, b = st.columns([3, 2])
         with a:
-            st.markdown('**Implied value per share by scenario**')
-            df = pd.DataFrame({'Scenario': sc.columns, 'Price': sc.loc['Implied share price'].values})
-            cmap = alt.Scale(domain=['Bear', 'Base', 'Bull', 'Prob-weighted'], range=[RED, BLUE, GREEN, NAVY])
-            bars = alt.Chart(df).mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6, size=55).encode(
-                x=alt.X('Scenario:N', sort=None, axis=alt.Axis(labelAngle=0, title=None)), y=alt.Y('Price:Q', title=f'{ccy} per share'),
-                color=alt.Color('Scenario:N', scale=cmap, legend=None), tooltip=['Scenario', alt.Tooltip('Price:Q', format=',.2f')])
-            txt = bars.mark_text(dy=-8, fontWeight='bold').encode(text=alt.Text('Price:Q', format=',.2f'))
-            rule = alt.Chart(pd.DataFrame({'p': [prev['price']]})).mark_rule(color=AMBER, strokeDash=[6, 4], size=2).encode(y='p:Q')
-            lbl = alt.Chart(pd.DataFrame({'p': [prev['price']], 't': [f'Current {prev["price"]:,.2f}']})).mark_text(
-                align='left', dx=4, dy=-8, color=AMBER, fontWeight='bold').encode(y='p:Q', text='t:N', x=alt.value(4))
-            st.altair_chart((bars + txt + rule + lbl).properties(height=320), width='stretch')
+            st.markdown(f'**Implied value per share \u2014 all {n_sc} scenarios** (blended DCF)')
+            df = sc.drop('Probability-weighted', errors='ignore')[['Price (blended)']].reset_index()
+            df.columns = ['Scenario', 'Price']
+            df['Group'] = df['Scenario'].map(lambda x: x if x in ('Bear', 'Base', 'Bull') else 'Other')
+            cmap = alt.Scale(domain=['Bear', 'Base', 'Bull', 'Other'], range=[RED, BLUE, GREEN, '#94A3B8'])
+            bars = alt.Chart(df).mark_bar(cornerRadiusTopRight=5, cornerRadiusBottomRight=5).encode(
+                y=alt.Y('Scenario:N', sort='-x', title=None, axis=alt.Axis(labelLimit=260)), x=alt.X('Price:Q', title=f'{ccy} per share'),
+                color=alt.Color('Group:N', scale=cmap, legend=None), tooltip=['Scenario', alt.Tooltip('Price:Q', format=',.2f')])
+            rule = alt.Chart(pd.DataFrame({'p': [prev['price']]})).mark_rule(color=AMBER, strokeDash=[6, 4], size=2).encode(x='p:Q')
+            st.altair_chart((bars + rule).properties(height=max(320, 22 * n_sc + 40)), width='stretch')
+            st.caption(f'Amber line = current price ({prev["price"]:,.2f}). Red / blue / green = Bear / Base / Bull.')
         with b:
-            st.markdown('**EV composition (Base blended)**')
+            st.markdown('**EV composition (active scenario, blended)**')
             comp = pd.DataFrame({'Part': ['PV of explicit UFCF', 'PV of terminal value'], 'Value': [prev['pv_explicit'], prev['pv_tv']]})
             donut = alt.Chart(comp).mark_arc(innerRadius=62, outerRadius=105).encode(
                 theta='Value:Q', color=alt.Color('Part:N', scale=alt.Scale(range=[BLUE, NAVY]), legend=alt.Legend(orient='bottom', title=None)),
                 tooltip=['Part', alt.Tooltip('Value:Q', format=',.0f')])
-            st.altair_chart(donut.properties(height=320), width='stretch')
-            st.caption(f'Terminal value = **{prev["tv_pct"]:.0%}** of enterprise value (active scenario).')
-        m1, m2 = st.columns(2)
-        m1.metric('Gordon Growth only (active case)', f'{prev["gordon"]:,.2f}')
-        m2.metric('Exit Multiple only (active case)', f'{prev["exitm"]:,.2f}')
+            st.altair_chart(donut.properties(height=300), width='stretch')
+            st.caption(f'Terminal value = **{prev["tv_pct"]:.0%}** of enterprise value.')
+            m1, m2 = st.columns(2)
+            m1.metric('Gordon only', f'{prev["gordon"]:,.2f}')
+            m2.metric('Exit multiple only', f'{prev["exitm"]:,.2f}')
         st.markdown('**Scenario matrix**')
-        fm = {'Revenue CAGR (5Y)': '{:.1%}', 'FY30E EBITDA margin': '{:.1%}', 'FY30E UFCF': '{:,.0f}', 'WACC': '{:.2%}',
-              'Enterprise value': '{:,.0f}', 'Equity value': '{:,.0f}', 'Implied share price': '{:,.2f}', 'Upside / (downside)': '{:+.1%}'}
-        show = sc.copy().astype(object)
-        for r in show.index:
-            show.loc[r] = [fm[r].format(v) if v is not None else 'n/a' for v in sc.loc[r]]
-        st.dataframe(show, width='stretch')
-        st.caption('Probability weights default to 25 / 50 / 25 \u2014 change in Excel (`Scenario_Valuation`). Values use the default assumptions written by this app.')
+        fm = {'Probability': '{:.0%}', 'Revenue CAGR': '{:.1%}', 'FY30E EBITDA margin': '{:.1%}', 'FY30E UFCF': '{:,.0f}', 'WACC': '{:.2%}',
+              'Enterprise value': '{:,.0f}', 'Equity value': '{:,.0f}', 'Price (Gordon)': '{:,.2f}', 'Price (Exit)': '{:,.2f}',
+              'Price (blended)': '{:,.2f}', 'Upside / (downside)': '{:+.1%}', 'TV % of EV': '{:.0%}'}
+        st.dataframe(sc.style.format(fm, na_rep='n/a'), width='stretch', height=min(900, 36 * len(sc) + 40))
+        st.caption('Probabilities are inputs in Excel (`Scenario_Valuation`, default 8 / 30 / 8 + 20 regimes = 100%). '
+                   'Pick the active scenario in `Assumptions!C5` (library in `Assumptions!N5:O27`).')
 
 with t2:
     if prev:
@@ -231,7 +244,7 @@ with t4:
     u = d['_used']
     st.dataframe(pd.DataFrame({'Input': list(u), 'Value': [f'{v:,.4g}' if isinstance(v, float) else str(v) for v in u.values()]}),
                  hide_index=True, width='stretch')
-    st.markdown('- **Also pre-filled:** 3-year historicals; Bear/Base/Bull drivers from last-2-year ratios; macro paths; revenue growth fading from the historical CAGR to 3.5%.\n'
+    st.markdown('- **Also pre-filled:** 3-year historicals; drivers for all 23 scenarios (Base from last-2-year ratios + each regime\'s delta); macro paths; revenue growth fading from the historical CAGR to 3.5%.\n'
                 '- **You should replace:** peer betas on `WACC` (placeholder = company itself), options/RSUs on `Assumptions` (default 0), the macro paths for your region.\n'
                 '- **Defaults:** terminal growth 2.5%, 50/50 Gordon vs exit multiple, mid-year on (see `dcf/config.py`).')
 
