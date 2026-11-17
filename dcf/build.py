@@ -70,4 +70,5 @@ def preview(path):
     return dict(scen=scen, sens=pd.DataFrame(sens, columns=['WACC', 'g', 'Price']), trend=trend, ufcf=ufcf,
                 pv_explicit=_f(dcf['E58'].value), pv_tv=_f(dcf['E59'].value), tv_pct=_f(dcf['E69'].value),
                 gordon=_f(dcf['C66'].value), exitm=_f(dcf['D66'].value), audit=audit, price=_f(asm['C17'].value),
-                sens_center=_f(st_['E32'].value), rating=rating, price_target=price_target, bs_check=bs_check)
+                sens_center=_f(st_['E32'].value), rating=rating, price_target=price_target, bs_check=bs_check,
+                recalc_path=f)   # use the recalculated copy for download: it carries cached formula values

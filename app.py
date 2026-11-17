@@ -1,5 +1,5 @@
 """Streamlit front-end: enter a ticker -> download a fully formula-driven DCF workbook. All DCF inputs are edited in Excel."""
-import os, tempfile
+import os, shutil, tempfile
 import altair as alt
 import pandas as pd
 import streamlit as st
@@ -127,6 +127,8 @@ if run:
                 if have_libreoffice():
                     st.write('\U0001F501 Recalculating to preview results')
                     prev = preview(out)
+                    if prev and prev.get('recalc_path'):
+                        shutil.copy(prev['recalc_path'], out)   # download the recalculated copy (cached values)
                 with open(out, 'rb') as fh:
                     st.session_state['res'] = dict(d=d, rf=rf, bytes=fh.read(), name=os.path.basename(out), prev=prev)
                 stat.update(label=f'DCF ready for {d["name"]}', state='complete', expanded=False)

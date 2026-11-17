@@ -96,11 +96,13 @@ def make_hook(d, rf):
         used['Risk-free (10Y)'] = round(rf, 4)
         own = (d['name'] + ' (subject co. - replace with real peers)', d['ticker'], d['beta'], d['de'])
         ref = d.get('ref') or {}
-        peers = [p[0] for p in (ref.get('p') or [])][:5]
+        peers = list(dict.fromkeys(p[0] for p in (ref.get('p') or [])))[:5]
         pdata = d.get('peers_data') or []
+        peer_names = {p[0]: p[1] for p in (ref.get('p') or [])}   # align names with de-duplicated tickers
         for i in range(5):                                   # curated peer tickers + live beta/D-E; fallback = company itself
             r = 6 + i
-            nm = (ref.get('p') or [])[i][1] if i < len(ref.get('p') or []) else own[0]
+            nm = peer_names.get(peers[i]) if i < len(peers) else own[0]
+            nm = nm or own[0]
             tk = peers[i] if i < len(peers) else own[1]
             pd_ = pdata[i] if i < len(pdata) else {}
             beta = pd_.get('beta') if pd_.get('ok') else own[2]
@@ -121,13 +123,16 @@ def make_hook(d, rf):
                 wc[f'B{r}'] = pd_['ticker']
                 if pd_.get('price'): wc[f'C{r}'] = round(pd_['price'], 2)
                 if pd_.get('shares'): wc[f'D{r}'] = round(pd_['shares'], 3)
-                if pd_.get('net_debt'): wc[f'F{r}'] = round(pd_['net_debt'], 1)
-                if pd_.get('ebitda'): wc[f'H{r}'] = round(pd_['ebitda'], 1)
-                if pd_.get('ebitda'):
+                if abs(pd_.get('net_debt') or 0) < (pd_.get('mcap') or 1) * 3:
+                    wc[f'F{r}'] = round(pd_['net_debt'], 1)
+                if 0 < (pd_.get('ebitda') or 0) < (pd_.get('mcap') or 1):
+                    wc[f'H{r}'] = round(pd_['ebitda'], 1)
                     growth = pd_.get('growth') or 0.06
                     wc[f'J{r}'] = round(pd_['ebitda'] * (1 + growth), 1)
-                if pd_.get('ni'): wc[f'L{r}'] = round(pd_['ni'], 1)
-                if pd_.get('rev'): wc[f'O{r}'] = round(pd_['rev'], 1)
+                if 0 < (pd_.get('ni') or 0) < (pd_.get('mcap') or 1):
+                    wc[f'L{r}'] = round(pd_['ni'], 1)
+                if 0 < (pd_.get('rev') or 0) < (pd_.get('mcap') or 1) * 20:
+                    wc[f'O{r}'] = round(pd_['rev'], 1)
             elif i < len(peers):
                 wc[f'B{7 + i}'] = peers[i]
         wb.calculation.fullCalcOnLoad = True

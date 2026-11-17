@@ -78,6 +78,21 @@ def fetch_peers(tickers):
         ev_ebitda = _num(info.get('enterpriseToEbitda'))
         ev_rev = _num(info.get('enterpriseToRevenue'))
         pe = _num(info.get('trailingPE') or info.get('forwardPE'))
+        # Yahoo snapshot multiples are noisy for ADRs/OTC names: only accept plausible ranges
+        ev_ebitda = ev_ebitda if 2.0 <= ev_ebitda <= 40.0 else 0.0
+        ev_rev = ev_rev if 0.2 <= ev_rev <= 30.0 else 0.0
+        pe = pe if 2.0 <= pe <= 80.0 else 0.0
+        fin = _safe_df(lambda: yf.Ticker(tk).financials)
+        cf = _safe_df(lambda: yf.Ticker(tk).cashflow)
+        fy = _by_year(fin)
+        fcol = sorted(fy)[-1] if fy else None
+        cy = _by_year(cf)
+        ccol = sorted(cy)[-1] if cy else None
+        op_inc = _pick(fin, ['Operating Income', 'EBIT'], fcol)
+        dep = _pick(cf, ['Depreciation And Amortization', 'Depreciation Amortization Depletion'], ccol)
+        ebitda = (op_inc + dep) / M if op_inc and op_inc > 0 else (ev / ev_ebitda / M if ev and ev_ebitda else 0.0)
+        revenue = _pick(fin, ['Total Revenue', 'Operating Revenue'], fcol) / M if fcol else 0.0
+        ni = _pick(fin, ['Net Income', 'Net Income Common Stockholders'], fcol) / M if fcol else 0.0
         rec = dict(ticker=tk, ok=bool(price and mcap),
                    beta=_num(info.get('beta')) or 1.0,
                    de=_num(info.get('debtToEquity')) / 100.0,
@@ -85,9 +100,7 @@ def fetch_peers(tickers):
                    mcap=mcap / M, net_debt=(ev - mcap) / M if ev else 0.0,
                    ev_ebitda=ev_ebitda, pe=pe,
                    growth=_num(info.get('revenueGrowth')) or 0.06,
-                   ebitda=(ev / ev_ebitda / M) if ev and ev_ebitda else 0.0,
-                   ni=(mcap / pe / M) if mcap and pe else 0.0,
-                   rev=(ev / ev_rev / M) if ev and ev_rev else 0.0)
+                   ebitda=ebitda, ni=ni, rev=revenue)
         out.append(rec)
     return out
 
