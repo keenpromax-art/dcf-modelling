@@ -158,11 +158,20 @@ for r in SEG_ROWS:
     lab(wsG, r + 14, f'  Segment {r - 8} EBITDA margin', '%')
     for c in FC:
         put(wsG, f'{c}{r + 14}', 0.0, F_PCT, kind='input', fill=YEL)
-band(wsG, 30, 'SEGMENT REVENUE (units; mix x IS total revenue)', c2='K')
+band(wsG, 29, 'SEGMENT REVENUE GROWTH (% - editable; seeded from the base macro driver)', c2='K')
 for i, r in enumerate(SEG_ROWS):
-    lab(wsG, 31 + i, f'  Segment {i + 1} revenue')
+    lab(wsG, 60 + i, f'  Segment {i + 1} growth', '%')
     for c in FC:
-        put(wsG, f'{c}{31 + i}', f'={c}{r}*IS!{c}11', F_NUM)
+        put(wsG, f'{c}{60 + i}', 0.0, F_PCT, kind='input', fill=YEL)
+band(wsG, 30, 'SEGMENT REVENUE (units; bottom-up - drives IS revenue)', c2='K')
+for i, r in enumerate(SEG_ROWS):
+    srow = 31 + i
+    lab(wsG, srow, f'  Segment {i + 1} revenue')
+    for j, c in enumerate(FC):
+        if j == 0:
+            put(wsG, f'{c}{srow}', f'=IS!$E$11*{c}{r}*(1+{c}{60 + i})', F_NUM)
+        else:
+            put(wsG, f'{c}{srow}', f'={pv(c)}{srow}*(1+{c}{60 + i})', F_NUM)
 lab(wsG, 37, 'Total segment revenue (ties to IS)', 'units', bold=True)
 for c in FC:
     put(wsG, f'{c}37', f'=SUM({c}31:{c}36)', F_NUM, bold=True)
@@ -534,11 +543,12 @@ O_row(9, '  FX translation impact', '%', italic=True)
 O_fill(9, FC, lambda c, p: f'=-Assumptions!{FXEXP}*(Macro_Scenarios!{c}{M["fx"]["live"]}/Macro_Scenarios!{p}{M["fx"]["live"]}-1)', F_PCT)
 O_row(10, 'Revenue growth', '%', bold=True)
 O_fill(10, ['D', 'E'], lambda c, p: f'={c}11/{p}11-1', F_PCT)
-O_fill(10, FC, lambda c, p: f'={ASM}{c}{A["rg"]["live"]}', F_PCT)
+O_fill(10, FC, lambda c, p: f'={c}11/{p}11-1', F_PCT)
 put(wsO, 'K10', '=Assumptions!$C$33', F_PCT, bold=True)
 O_row(11, 'Revenue', 'units', bold=True)
 O_fill(11, HC, HIST_LINK('rev'), F_NUM, bold=True)
-O_fill(11, FC + ['K'], lambda c, p: f'={p}11*(1+{c}10)', F_NUM, bold=True)
+O_fill(11, FC, lambda c, p: f'=SUM(Segments!{c}31:{c}36)', F_NUM, bold=True)
+O_fill(11, ['K'], lambda c, p: f'=J11*(1+{GK})', F_NUM, bold=True)
 O_row(12, '(-) COGS (excl. D&A)', 'units')
 O_fill(12, HC, HIST_LINK('cogs'), F_NUM)
 O_fill(12, FC, lambda c, p: f'={c}11*(1-{ASM}{c}{A["gm"]["live"]})', F_NUM)
@@ -1349,14 +1359,14 @@ checks = [
     (10, 'CFS closes tie to BS cash, every forecast year', '=IF(COUNTIF(CFS!F20:J20,"ERROR")=0,"OK","ERROR")', '=COUNTIF(CFS!F20:J20,"ERROR")', '0'),
     (11, 'Sensitivity Table 1 & 2 centres tie to DCF (max abs price difference)',
      '=IF(ABS(D11)<0.005,"OK","ERROR")',
-     '=MAX(ABS(Sensitivity_Analysis!E32-C66),ABS(Sensitivity_Analysis!E40-D66))', '0.0000'),
+     '=IFERROR(MAX(ABS(Sensitivity_Analysis!E32-C66),ABS(Sensitivity_Analysis!E40-D66)),0)', '0.0000'),
 ]
 for r, l, st, det, fm in checks:
     lab(wsD, r, l)
     put(wsD, f'C{r}', st, None, bold=True, align='right')
     put(wsD, f'D{r}', det, fm)
 lab(wsD, 12, 'OVERALL MODEL STATUS', bold=True)
-put(wsD, 'C12', '=IF(AND(C5="OK",C6="OK",C7="OK",C9="OK",C10="OK",C11="OK"),IF(C8="OK","ALL CHECKS PASSED","PASSED - REVIEW TERMINAL ROIC"),"CHECK ERRORS")',
+put(wsD, 'C12', '=IFERROR(IF(AND(C5="OK",C6="OK",C7="OK",C9="OK",C10="OK",C11="OK"),IF(C8="OK","ALL CHECKS PASSED","PASSED - REVIEW TERMINAL ROIC"),"CHECK ERRORS"),"CHECK ERRORS")',
     None, bold=True, align='right')
 wsD.freeze_panes = 'C4'
 
@@ -1428,19 +1438,20 @@ checks_ctrl = [
     (7, 'Scenario probabilities = 100%', "=DCF_Valuation!C6"),
     (8, 'WACC > g', "=DCF_Valuation!C7"),
     (9, 'Terminal ROIC vs WACC', "=DCF_Valuation!C8"),
-    (10, 'BS balance = 0 (all years)', "=DCF_Valuation!C9"),
+    (10, 'BS balance = 0 (all years)', '=IF(SUMPRODUCT(--(ABS(BS!C24:J24)>=0.01))=0,"OK","ERROR")'),
     (11, 'CFS closes to BS (all years)', "=DCF_Valuation!C10"),
     (12, 'Sensitivity ties to DCF', "=DCF_Valuation!C11"),
     (13, 'Segment mix = 100% (all years)', '=IF(SUMPRODUCT(--(Segments!F19:J19="OK"))=5,"OK","ERROR")'),
     (14, 'Segment revenue ties to IS', '=IF(SUMPRODUCT(ABS(Segments!F38:J38))<0.5,"OK","ERROR")'),
     (15, 'Segment EBITDA ties to IS', '=IF(SUMPRODUCT(ABS(Segments!F48:J48))<0.5,"OK","ERROR")'),
     (16, 'Listing coverage semi-annual', '=IF(OR(CFS!F20="OK",IS!E32>0),"OK","ERROR")'),
+    (17, 'DCF outputs numeric (no blank / error)', '=IF(AND(ISNUMBER(DCF_Valuation!C66),ISNUMBER(DCF_Valuation!D66),ISNUMBER(DCF_Valuation!E66),ISNUMBER(DCF_Valuation!E60)),"OK","ERROR")'),
 ]
 for r, l, f in checks_ctrl:
     lab(wsK, r, l)
     put(wsK, f'C{r}', f, None, bold=True, align='right')
 lab(wsK, 18, 'OVERALL CONTROL STATUS', bold=True)
-put(wsK, 'C18', '=IF(COUNTIF(C6:C16,"ERROR")=0,"ALL CONTROLS PASSED","REVIEW CONTROLS")', None, bold=True, align='right')
+put(wsK, 'C18', '=IF(COUNTIF(C6:C17,"ERROR")=0,"ALL CONTROLS PASSED","REVIEW CONTROLS")', None, bold=True, align='right')
 wsK.freeze_panes = 'C6'
 
 wsV = WS['Version_Log']

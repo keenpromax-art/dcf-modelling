@@ -24,6 +24,7 @@ def make_hook(d, rf):
             for j, c in enumerate('FGHIJ'):
                 wsg[f'{c}{9 + i}'] = mix if i < len(segs) - 1 else round(1.0 - mix * (len(segs) - 1), 5)
                 wsg[f'{c}{23 + i}'] = f'=IS!{c}19'   # default: company margin; analyst overrides per segment; total ties exactly
+                wsg[f'{c}{60 + i}'] = f'=Assumptions!{c}{A["rg"]["live"]}'  # bottom-up growth seeded from macro driver
         used = {}
 
         def setc(ref, val, label=None):
