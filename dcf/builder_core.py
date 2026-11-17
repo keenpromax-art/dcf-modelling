@@ -30,15 +30,15 @@ F_YR = '0'
 
 BLUE, BLACK, GREEN = '0000FF', '000000', '008000'
 NAVY, GREY, YEL, LGREY = '1F3864', 'D9E1F2', 'FFF2CC', 'F2F2F2'
-SC = ['Bear', 'Base', 'Bull']
-SK = ['bear', 'base', 'bull']
+
+# (scenario lists SC / SK / N are defined in the SCENARIO LIBRARY block below)
 HC = ['C', 'D', 'E']
 FC = ['F', 'G', 'H', 'I', 'J']
 ALL = HC + FC + ['K']
 
 DCF_UFCF_ROW = 37      # row of UFCF on DCF_Valuation (cross-referenced by Operating_Model)
 DIL_ROW = 81           # row of diluted shares on DCF_Valuation (cross-referenced by WACC)
-WACC_ROW = 54          # row of WACC on WACC sheet
+WACC_LIVE = 'WACC!$N$66'   # live WACC cell (23 scenario rows 43-65, live row 66)
 
 
 def pv(c):
@@ -137,9 +137,88 @@ def P(xs):
 # =====================================================================================
 # 3. MACRO_SCENARIOS  (blocks first - Assumptions links to these rows)
 # =====================================================================================
+# ------------------------------------------------------------------ SCENARIO LIBRARY (23 scenarios)
+SHAPES = {'flat': [1, 1, 1, 1, 1], 'fade': [1, .8, .5, .3, .2], 'fadeslow': [1, 1, .7, .5, .5],
+          'shock': [1, .6, .2, 0, 0], 'build': [.2, .5, .8, 1, 1]}
+BASEV = dict(
+    gdp=[.022, .022, .020, .020, .020], cpi=[.030, .028, .025, .025, .025], rf=[.043, .042, .042, .042, .042],
+    tam=[.040, .040, .038, .035, .035], comm=[.030, .030, .028, .025, .025], fx=[100.0] * 5,
+    share=[.003] * 5, spread=[0.0] * 5, gmb=[.420, .425, .430, .430, .430], sga=[.138, .135, .132, .130, .128],
+    rd=[.060] * 5, dso=[45.0] * 5, dio=[60.0] * 5, dpo=[50.0] * 5, gcx=[.026, .025, .024, .024, .024])
+SCEN = []
+
+
+def _S(key, name, desc, shape, prob, **d):
+    SCEN.append((key, name, desc, shape, prob, d))
+
+
+_S('bear', 'Bear', 'Weak growth, sticky inflation, higher rates, margin pressure', 'fadeslow', 8,
+   gdp=-.017, cpi=.015, rf=.007, tam=-.020, comm=.030, fx=3, share=-.013, spread=-.010, gmb=-.015, sga=.004, rd=.002, dso=3, dio=5, dpo=-3, gcx=-.006, prem=.010)
+_S('base', 'Base', 'Consensus-style path: moderate growth, inflation normalising', 'flat', 30)
+_S('bull', 'Bull', 'Strong demand, disinflation, falling rates, operating leverage', 'fadeslow', 8,
+   gdp=.010, cpi=-.008, rf=-.005, tam=.020, comm=-.015, fx=-1.5, share=.007, spread=.005, gmb=.010, sga=-.004, rd=-.001, dso=-2, dio=-3, dpo=2, gcx=.004, prem=-.005)
+_S('s04', 'Soft Landing', 'Disinflation without recession; gradual rate cuts', 'flat', 7,
+   gdp=.002, cpi=-.004, rf=-.005, tam=.005, comm=-.005, spread=.001, gmb=.003, sga=-.001, dso=-1, dio=-1, gcx=.002, prem=-.0025)
+_S('s05', 'Mild Recession', 'Two-quarter contraction, demand dip then recovery', 'shock', 6,
+   gdp=-.030, cpi=-.010, rf=-.010, tam=-.030, comm=-.020, fx=1, share=-.003, spread=-.010, gmb=-.010, sga=.004, rd=.001, dso=4, dio=8, dpo=-2, gcx=-.008, prem=.0075)
+_S('s06', 'Deep Recession', 'GFC-style demand collapse, credit stress, slow recovery', 'shock', 2,
+   gdp=-.060, cpi=-.015, rf=-.020, tam=-.070, comm=-.040, fx=3, share=-.008, spread=-.020, gmb=-.030, sga=.010, rd=.002, dso=10, dio=15, dpo=-5, gcx=-.015, prem=.020)
+_S('s07', 'Stagflation', 'Low growth with high inflation and rising rates', 'fade', 3,
+   gdp=-.020, cpi=.030, rf=.015, tam=-.020, comm=.040, fx=2, share=-.005, spread=-.015, gmb=-.015, sga=.004, dso=4, dio=8, dpo=-3, gcx=-.004, prem=.015)
+_S('s08', 'Rate Shock (Hawkish Central Banks)', 'Aggressive tightening: higher discount rates, stronger home currency', 'flat', 3,
+   gdp=-.010, cpi=.010, rf=.015, tam=-.010, comm=.005, fx=4, spread=-.005, gmb=-.005, sga=.002, dso=3, dio=3, dpo=-2, gcx=-.005, prem=.010)
+_S('s09', 'Dovish Pivot (Rate Cuts)', 'Faster-than-expected easing supports demand and multiples', 'flat', 4,
+   gdp=.005, rf=-.010, tam=.010, fx=-2, spread=.002, gmb=.002, dso=-1, gcx=.003, prem=-.005)
+_S('s10', 'Oil / Commodity Price Shock', 'Energy and input-cost spike squeezes margins', 'shock', 2,
+   gdp=-.010, cpi=.020, rf=.005, tam=-.005, comm=.060, spread=-.005, gmb=-.020, sga=.001, dso=2, dio=5, dpo=-2, gcx=-.002, prem=.0075)
+_S('s11', 'Input-Cost Relief (Commodity Deflation)', 'Falling raw-material prices lift gross margin', 'flat', 3,
+   gdp=.003, cpi=-.010, rf=-.003, tam=.003, comm=-.040, spread=-.003, gmb=.008, prem=-.0025)
+_S('s12', 'Strong Home Currency (Translation Headwind)', 'Reporting currency appreciates; foreign revenue translates lower', 'flat', 2,
+   cpi=-.003, comm=-.010, fx=8, share=-.002, spread=-.002, gmb=-.003)
+_S('s13', 'Weak Home Currency (FX Tailwind)', 'Reporting currency depreciates; translation tailwind, imported inflation', 'flat', 2,
+   cpi=.005, comm=.010, fx=-8, share=.002, spread=.002, gmb=.002, prem=.0025)
+_S('s14', 'AI / Technology Productivity Boom', 'Productivity-led growth, SG&A leverage, higher R&D and CapEx', 'build', 3,
+   gdp=.005, cpi=-.003, rf=.002, tam=.025, share=.010, spread=.003, gmb=.010, sga=-.008, rd=.003, dso=-2, dio=-4, gcx=.006, prem=-.005)
+_S('s15', 'Supply-Chain Disruption', 'Shortages: scarcity pricing but higher costs and inventory build', 'shock', 2,
+   gdp=-.010, cpi=.015, rf=.005, tam=-.010, comm=.030, share=-.004, spread=.005, gmb=-.015, sga=.002, dso=2, dio=15, dpo=-4, gcx=.002, prem=.0075)
+_S('s16', 'Trade War / Tariffs', 'Deglobalisation: tariffs, weaker volumes, input-cost inflation', 'build', 3,
+   gdp=-.010, cpi=.010, rf=.003, tam=-.015, comm=.015, fx=3, share=-.005, spread=-.003, gmb=-.012, sga=.002, dio=6, prem=.010)
+_S('s17', 'Geopolitical Shock', 'Conflict-driven energy spike, risk-off, weaker demand', 'shock', 2,
+   gdp=-.015, cpi=.020, rf=.005, tam=-.020, comm=.040, fx=3, share=-.003, spread=-.005, gmb=-.012, sga=.002, dso=3, dio=8, dpo=-3, gcx=-.004, prem=.015)
+_S('s18', 'Market-Share Outperformer', 'Company-specific: gains share from competitors', 'build', 3,
+   share=.015, spread=.002, gmb=.004, sga=-.003, rd=.001, gcx=.004, prem=-.0025)
+_S('s19', 'Competitive Disruption (Share Loss)', 'New entrant / disruptor erodes share and margin', 'build', 2,
+   share=-.020, spread=-.008, gmb=-.012, sga=.005, rd=.003, dso=2, dio=4, gcx=.001, prem=.010)
+_S('s20', 'Pricing-Power Boom', 'Company-specific: sustained price increases stick', 'flat', 2,
+   cpi=.005, spread=.015, gmb=.010, prem=-.0025)
+_S('s21', 'Price War / Margin Squeeze', 'Industry discounting compresses price and margin', 'fade', 1,
+   share=.004, spread=-.020, gmb=-.020, sga=.003, prem=.0075)
+_S('s22', 'Cost-Efficiency Programme', 'Company-specific: restructuring lowers SG&A and working capital', 'build', 1,
+   gmb=.006, sga=-.010, dso=-2, dio=-5, gcx=-.002, prem=-.0025)
+_S('s23', 'Demand Boom / Reflation', 'Hot economy: strong volumes and pricing, higher rates', 'fade', 1,
+   gdp=.020, cpi=.015, rf=.010, tam=.030, comm=.020, fx=-2, share=.003, spread=.010, gmb=.003, sga=-.003, dso=-1, dio=-3, gcx=.005, prem=.005)
+SK = [s[0] for s in SCEN]
+SC = [s[1] for s in SCEN]
+N = len(SCEN)
+assert sum(s[4] for s in SCEN) == 100
+
+
+def apply_delta(var, base):
+    """Scenario path for a driver = Base path + delta x shape (risk-free shift is always flat)."""
+    out = {}
+    for key, name, desc, shape, prob, d in SCEN:
+        sh = SHAPES['flat'] if var == 'rf' else SHAPES[shape]
+        out[key] = [base[i] + d.get(var, 0.0) * sh[i] for i in range(5)]
+    return out
+
+
+def VAL(var):
+    ad = apply_delta(var, BASEV[var])
+    return [ad[k] for k in SK]
+
 wsM = WS['Macro_Scenarios']
-title(wsM, 'Macro_Scenarios - Macroeconomic & Industry Assumptions (Bear / Base / Bull)',
-      'Blue = input | Green = cross-sheet link | Black = formula.  Rows marked "Live" switch with the scenario selector on Assumptions!C5.')
+title(wsM, f'Macro_Scenarios - Macroeconomic & Industry Assumptions ({N} scenarios: Bear / Base / Bull + 20 regimes)',
+      'Blue = input | Green = cross-sheet link | Black = formula.  Rows marked "Live" switch with the scenario selector on Assumptions!C5 (library in Assumptions!N5:O27).')
 band(wsM, 4, 'MACRO SCENARIO MATRIX')
 yr_labels(wsM, 4, 'Assumptions!$C$12', cols=FC)
 wsM['E4'].value = 'FY25A / Spot'
@@ -152,44 +231,37 @@ mr = 5
 def macro_block(key, ttl, unit, fmt, vals, e_val=None):
     global mr
     subband(wsM, mr, ttl, unit)
-    for s in range(3):
-        rr = mr + 1 + s
-        lab(wsM, rr, f'  {SC[s]}')
+    for i, s in enumerate(SK):
+        rr = mr + 1 + i
+        lab(wsM, rr, f'  {SC[i]}')
         if e_val is not None:
-            if s == 0:
-                put(wsM, f'E{rr}', e_val, fmt)
-            else:
-                put(wsM, f'E{rr}', f'=E{mr + 1}', fmt)
-        for i, col in enumerate(FC):
-            put(wsM, f'{col}{rr}', vals[s][i], fmt)
-    rr = mr + 4
+            put(wsM, f'E{rr}', e_val if i == 0 else f'=E{mr + 1}', fmt)
+        for j, col in enumerate(FC):
+            put(wsM, f'{col}{rr}', round(vals[i][j], 6), fmt)
+    rr = mr + N + 1
     lab(wsM, rr, '  \u25ba Live (active scenario)', bold=True)
-    cols = (['E'] if e_val is not None else []) + FC
-    for col in cols:
-        put(wsM, f'{col}{rr}', f'=CHOOSE(Assumptions!$C$6,{col}{mr + 1},{col}{mr + 2},{col}{mr + 3})', fmt, bold=True)
-    M[key] = {'bear': mr + 1, 'base': mr + 2, 'bull': mr + 3, 'live': mr + 4}
-    mr += 6
+    for col in (['E'] if e_val is not None else []) + FC:
+        put(wsM, f'{col}{rr}', f'=INDEX({col}{mr + 1}:{col}{mr + N},Assumptions!$C$6)', fmt, bold=True)
+    M[key] = {s: mr + 1 + i for i, s in enumerate(SK)}
+    M[key]['live'] = rr
+    mr += N + 3
 
 
-macro_block('gdp', 'Real GDP growth', '% YoY', F_PCT,
-            [P([0.5, 1.0, 1.5, 1.5, 1.8]), P([2.2, 2.2, 2.0, 2.0, 2.0]), P([3.2, 3.0, 2.8, 2.5, 2.5])])
-macro_block('cpi', 'CPI inflation', '% YoY', F_PCT,
-            [P([4.5, 4.0, 3.5, 3.0, 3.0]), P([3.0, 2.8, 2.5, 2.5, 2.5]), P([2.2, 2.2, 2.0, 2.0, 2.0])])
-macro_block('rf', 'Benchmark risk-free rate / policy rate (long-dated govt yield)', '%', F_PCT2,
-            [P([5.0, 5.0, 4.8, 4.8, 4.8]), P([4.3, 4.2, 4.2, 4.2, 4.2]), P([3.8, 3.7, 3.7, 3.7, 3.7])])
-macro_block('tam', 'Industry TAM growth (volume)', '% YoY', F_PCT,
-            [P([2.0, 2.0, 2.5, 2.5, 2.5]), P([4.0, 4.0, 3.8, 3.5, 3.5]), P([6.0, 5.5, 5.0, 4.5, 4.0])])
-macro_block('comm', 'Commodity / input-cost inflation', '% YoY', F_PCT,
-            [P([6.0, 5.0, 4.0, 4.0, 3.5]), P([3.0, 3.0, 2.8, 2.5, 2.5]), P([1.5, 1.5, 1.5, 1.5, 1.5])])
+macro_block('gdp', 'Real GDP growth', '% YoY', F_PCT, VAL('gdp'))
+macro_block('cpi', 'CPI inflation', '% YoY', F_PCT, VAL('cpi'))
+macro_block('rf', 'Benchmark risk-free rate / policy rate (long-dated govt yield)', '%', F_PCT2, VAL('rf'))
+macro_block('tam', 'Industry TAM growth (volume)', '% YoY', F_PCT, VAL('tam'))
+macro_block('comm', 'Commodity / input-cost inflation', '% YoY', F_PCT, VAL('comm'))
 macro_block('fx', 'Reporting-currency strength index (rising = stronger home currency = translation headwind)', 'index', '0.0',
-            [[102, 104, 105, 106, 107], [100, 100, 100, 100, 100], [99, 98, 98, 98, 98]], e_val=100.0)
+            VAL('fx'), e_val=100.0)
 
 subband(wsM, mr, 'Scenario cost-of-equity adjustment (added to Ke on WACC tab)', '% pts')
-for s in range(3):
-    lab(wsM, mr + 1 + s, f'  {SC[s]}')
-    put(wsM, f'C{mr + 1 + s}', [0.01, 0.0, -0.005][s], F_PCT2)
-M['prem'] = {'bear': mr + 1, 'base': mr + 2, 'bull': mr + 3}
-mr += 5
+M['prem'] = {}
+for i, s in enumerate(SK):
+    lab(wsM, mr + 1 + i, f'  {SC[i]}')
+    put(wsM, f'C{mr + 1 + i}', SCEN[i][5].get('prem', 0.0), F_PCT2)
+    M['prem'][s] = mr + 1 + i
+mr += N + 3
 M['transmission_start'] = mr
 
 # =====================================================================================
@@ -203,11 +275,20 @@ put(wsA, 'A3', 'ILLUSTRATIVE DATA: all pre-loaded numbers are for a fictional "E
 A = {}
 
 band(wsA, 4, 'A. CONTROL PANEL & COMPANY INFORMATION')
-lab(wsA, 5, 'Active scenario (Bear / Base / Bull)', 'selector', bold=True)
+lab(wsA, 5, 'Active scenario (pick from the scenario library in column N)', 'selector', bold=True)
 put(wsA, 'C5', 'Base', kind='input', fill=YEL, bold=True)
-dv_list(wsA, 'C5', ['Bear', 'Base', 'Bull'])
-lab(wsA, 6, 'Scenario index (1 = Bear, 2 = Base, 3 = Bull)', 'calc')
-put(wsA, 'C6', '=IF(C5="Bear",1,IF(C5="Bull",3,2))', '0')
+_dv = DataValidation(type='list', formula1=f'$N$5:$N${4 + N}', allow_blank=False)
+wsA.add_data_validation(_dv)
+_dv.add('C5')
+lab(wsA, 6, f'Scenario index (1..{N}: 1 = Bear, 2 = Base, 3 = Bull, 4+ = library)', 'calc')
+put(wsA, 'C6', f'=IFERROR(MATCH(C5,$N$5:$N${4 + N},0),2)', '0')
+put(wsA, 'M4', '#', kind='label', bold=True, align='right')
+put(wsA, 'N4', f'SCENARIO LIBRARY ({N}) - selectable in C5', kind='label', bold=True)
+put(wsA, 'O4', 'Description', kind='label', bold=True)
+for _i, (_k, _nm, _ds, _sh, _pb, _d) in enumerate(SCEN):
+    put(wsA, f'M{5 + _i}', _i + 1, '0', kind='label', align='right')
+    put(wsA, f'N{5 + _i}', _nm, kind='input')
+    put(wsA, f'O{5 + _i}', _ds, kind='label', italic=True)
 for row, label, unit, val, fmt in [
     (7, 'Company name', 'text', 'Example Co. (ILLUSTRATIVE)', None),
     (8, 'Ticker', 'text', 'EXCO', None),
@@ -304,18 +385,18 @@ ar_ = 62
 
 
 def drv_block(key, ttl, unit, fmt, vals=None, fml=None, hist=None):
-    """Bear/Base/Bull rows (inputs or formulas) + Live row (CHOOSE on scenario index)."""
+    """One row per scenario (inputs or formulas) + Live row = INDEX on the scenario selector."""
     global ar_
     subband(wsA, ar_, ttl, unit, c2='K')
-    for s in range(3):
-        rr = ar_ + 1 + s
-        lab(wsA, rr, f'  {SC[s]}')
-        for i, col in enumerate(FC):
+    for i, s in enumerate(SK):
+        rr = ar_ + 1 + i
+        lab(wsA, rr, f'  {SC[i]}')
+        for j, col in enumerate(FC):
             if vals is not None:
-                put(wsA, f'{col}{rr}', vals[s][i], fmt)
+                put(wsA, f'{col}{rr}', round(vals[i][j], 6), fmt)
             else:
-                put(wsA, f'{col}{rr}', fml(SK[s], col, pv(col)), fmt)
-    rr = ar_ + 4
+                put(wsA, f'{col}{rr}', fml(s, col, pv(col)), fmt)
+    rr = ar_ + N + 1
     lab(wsA, rr, '  \u25ba Live (active scenario)', bold=True)
     if hist:
         for c in HC:
@@ -323,50 +404,37 @@ def drv_block(key, ttl, unit, fmt, vals=None, fml=None, hist=None):
             if f:
                 put(wsA, f'{c}{rr}', f, fmt, bold=True)
     for col in FC:
-        put(wsA, f'{col}{rr}', f'=CHOOSE($C$6,{col}{ar_ + 1},{col}{ar_ + 2},{col}{ar_ + 3})', fmt, bold=True)
-    A[key] = {'bear': ar_ + 1, 'base': ar_ + 2, 'bull': ar_ + 3, 'live': ar_ + 4}
-    ar_ += 6
+        put(wsA, f'{col}{rr}', f'=INDEX({col}{ar_ + 1}:{col}{ar_ + N},$C$6)', fmt, bold=True)
+    A[key] = {s: ar_ + 1 + i for i, s in enumerate(SK)}
+    A[key]['live'] = rr
+    ar_ += N + 3
 
 
 H = HR
-drv_block('share', 'Market-share gain / (loss) vs. industry (added to Industry TAM growth)', '% pts', F_PCT,
-          vals=[P([-1.0] * 5), P([0.3] * 5), P([1.0] * 5)])
-drv_block('spread', 'Pricing power: price growth spread over CPI inflation', '% pts', F_PCT,
-          vals=[P([-1.0] * 5), P([0.0] * 5), P([0.5] * 5)])
+CONST = lambda vec: [list(vec) for _ in range(N)]
+drv_block('share', 'Market-share gain / (loss) vs. industry (added to Industry TAM growth)', '% pts', F_PCT, vals=VAL('share'))
+drv_block('spread', 'Pricing power: price growth spread over CPI inflation', '% pts', F_PCT, vals=VAL('spread'))
 drv_block('rg', 'Revenue growth = (1 + TAM + share) x (1 + CPI + spread) - 1 - FX exposure x \u0394FX index', '% YoY', F_PCT,
           fml=lambda s, c, p: (f"=(1+Macro_Scenarios!{c}{M['tam'][s]}+{c}{A['share'][s]})*(1+Macro_Scenarios!{c}{M['cpi'][s]}+{c}{A['spread'][s]})-1"
                                f"-{FXEXP}*(Macro_Scenarios!{c}{M['fx'][s]}/Macro_Scenarios!{p}{M['fx'][s]}-1)"),
           hist=lambda c, p: None if c == 'C' else f'={c}{H["rev"]}/{p}{H["rev"]}-1')
-drv_block('gmb', 'Gross margin before input-cost pressure', '% of revenue', F_PCT,
-          vals=[P([40.5, 40.5, 41.0, 41.0, 41.0]), P([42.0, 42.5, 43.0, 43.0, 43.0]), P([43.0, 44.0, 44.5, 45.0, 45.0])])
+drv_block('gmb', 'Gross margin before input-cost pressure', '% of revenue', F_PCT, vals=VAL('gmb'))
 drv_block('gm', 'Gross margin = pre-pressure margin - sensitivity x (commodity inflation - CPI)', '% of revenue', F_PCT,
           fml=lambda s, c, p: f"={c}{A['gmb'][s]}-{SENS}*(Macro_Scenarios!{c}{M['comm'][s]}-Macro_Scenarios!{c}{M['cpi'][s]})",
           hist=lambda c, p: f'=1-{c}{H["cogs"]}/{c}{H["rev"]}')
-drv_block('sga', 'SG&A % of revenue', '% of revenue', F_PCT,
-          vals=[P([14.2, 14.2, 14.0, 14.0, 14.0]), P([13.8, 13.5, 13.2, 13.0, 12.8]), P([13.6, 13.2, 12.8, 12.5, 12.2])],
-          hist=lambda c, p: f'={c}{H["sga"]}/{c}{H["rev"]}')
-drv_block('rd', 'R&D % of revenue', '% of revenue', F_PCT,
-          vals=[P([6.2] * 5), P([6.0] * 5), P([5.9] * 5)], hist=lambda c, p: f'={c}{H["rd"]}/{c}{H["rev"]}')
-drv_block('oth', 'Other OpEx % of revenue', '% of revenue', F_PCT,
-          vals=[P([2.0] * 5), P([2.0] * 5), P([2.0] * 5)], hist=lambda c, p: f'={c}{H["oth"]}/{c}{H["rev"]}')
-drv_block('sbc', 'Stock-based compensation % of revenue', '% of revenue', F_PCT,
-          vals=[P([1.2] * 5), P([1.2] * 5), P([1.2] * 5)], hist=lambda c, p: f'={c}{H["sbc"]}/{c}{H["rev"]}')
-drv_block('dso', 'DSO - accounts receivable days (on revenue)', 'days', F_DAYS,
-          vals=[[48.0] * 5, [45.0] * 5, [44.0] * 5], hist=lambda c, p: f'={c}{H["ar"]}/{c}{H["rev"]}*$C$14')
-drv_block('dio', 'DIO - inventory days (on COGS)', 'days', F_DAYS,
-          vals=[[65.0] * 5, [60.0] * 5, [58.0] * 5], hist=lambda c, p: f'={c}{H["inv"]}/{c}{H["cogs"]}*$C$14')
-drv_block('dpo', 'DPO - accounts payable days (on COGS)', 'days', F_DAYS,
-          vals=[[47.0] * 5, [50.0] * 5, [52.0] * 5], hist=lambda c, p: f'={c}{H["ap"]}/{c}{H["cogs"]}*$C$14')
-drv_block('oca', 'Prepaid & other current assets % of revenue', '% of revenue', F_PCT,
-          vals=[P([3.0] * 5), P([3.0] * 5), P([3.0] * 5)], hist=lambda c, p: f'={c}{H["oca"]}/{c}{H["rev"]}')
-drv_block('ocl', 'Accrued & other current liabilities % of revenue', '% of revenue', F_PCT,
-          vals=[P([9.0] * 5), P([9.0] * 5), P([9.0] * 5)], hist=lambda c, p: f'={c}{H["ocl"]}/{c}{H["rev"]}')
-drv_block('mcx', 'Maintenance CapEx % of revenue', '% of revenue', F_PCT,
-          vals=[P([3.8] * 5), P([3.8] * 5), P([3.8] * 5)])
-drv_block('gcx', 'Growth CapEx % of revenue', '% of revenue', F_PCT,
-          vals=[P([2.0, 2.0, 2.0, 2.0, 2.0]), P([2.6, 2.5, 2.4, 2.4, 2.4]), P([3.0, 2.9, 2.8, 2.7, 2.6])])
-drv_block('da', 'Depreciation & amortization % of revenue', '% of revenue', F_PCT,
-          vals=[P([3.5, 3.5, 3.6, 3.6, 3.7])] * 3, hist=lambda c, p: f'={c}{H["da"]}/{c}{H["rev"]}')
+drv_block('sga', 'SG&A % of revenue', '% of revenue', F_PCT, vals=VAL('sga'), hist=lambda c, p: f'={c}{H["sga"]}/{c}{H["rev"]}')
+drv_block('rd', 'R&D % of revenue', '% of revenue', F_PCT, vals=VAL('rd'), hist=lambda c, p: f'={c}{H["rd"]}/{c}{H["rev"]}')
+drv_block('oth', 'Other OpEx % of revenue', '% of revenue', F_PCT, vals=CONST([.02] * 5), hist=lambda c, p: f'={c}{H["oth"]}/{c}{H["rev"]}')
+drv_block('sbc', 'Stock-based compensation % of revenue', '% of revenue', F_PCT, vals=CONST([.012] * 5), hist=lambda c, p: f'={c}{H["sbc"]}/{c}{H["rev"]}')
+drv_block('dso', 'DSO - accounts receivable days (on revenue)', 'days', F_DAYS, vals=VAL('dso'), hist=lambda c, p: f'={c}{H["ar"]}/{c}{H["rev"]}*$C$14')
+drv_block('dio', 'DIO - inventory days (on COGS)', 'days', F_DAYS, vals=VAL('dio'), hist=lambda c, p: f'={c}{H["inv"]}/{c}{H["cogs"]}*$C$14')
+drv_block('dpo', 'DPO - accounts payable days (on COGS)', 'days', F_DAYS, vals=VAL('dpo'), hist=lambda c, p: f'={c}{H["ap"]}/{c}{H["cogs"]}*$C$14')
+drv_block('oca', 'Prepaid & other current assets % of revenue', '% of revenue', F_PCT, vals=CONST([.03] * 5), hist=lambda c, p: f'={c}{H["oca"]}/{c}{H["rev"]}')
+drv_block('ocl', 'Accrued & other current liabilities % of revenue', '% of revenue', F_PCT, vals=CONST([.09] * 5), hist=lambda c, p: f'={c}{H["ocl"]}/{c}{H["rev"]}')
+drv_block('mcx', 'Maintenance CapEx % of revenue', '% of revenue', F_PCT, vals=CONST([.038] * 5))
+drv_block('gcx', 'Growth CapEx % of revenue', '% of revenue', F_PCT, vals=VAL('gcx'))
+drv_block('da', 'Depreciation & amortization % of revenue', '% of revenue', F_PCT, vals=CONST([.035, .035, .036, .036, .037]),
+          hist=lambda c, p: f'={c}{H["da"]}/{c}{H["rev"]}')
 subband(wsA, ar_, 'Memo: total CapEx % of revenue (Live case)', '% of revenue')
 lab(wsA, ar_ + 1, '  Total CapEx % revenue (maintenance + growth)')
 for c in HC:
@@ -383,6 +451,7 @@ A['draw'] = ar_ + 1
 ar_ += 3
 band(wsA, ar_, 'F. NOTES & METHODOLOGY')
 notes = [
+    f'Scenario library: {N} pre-built regimes (Assumptions!N5:O27). Each = Base path + shaped delta (flat / fade / shock / build) on macro, margins, working capital and CapEx; every number is an editable blue input.',
     'Macro link: volume growth = Industry TAM growth + share gain; price growth = CPI + spread; revenue growth compounds both and adds FX translation. Change Macro_Scenarios and the DCF updates.',
     'Gross margin = pre-pressure margin less sensitivity x (commodity inflation - CPI): cost shocks beyond inflation compress margin.',
     'Terminal year (FY31E): every flow = FY30E x (1 + g); NWC change = FY30E NWC x g. Terminal value on Gordon uses this normalised UFCF.',
@@ -642,45 +711,41 @@ band(wsW, 34, '4. COST OF DEBT (SYNTHETIC RATING FROM INTEREST COVERAGE)')
 for r, l, f, fm in [(35, 'EBIT - last historical year', '=Operating_Model!E21', F_NUM),
                     (36, 'Interest expense - last historical year', '=Operating_Model!E57', F_NUM),
                     (37, 'Interest coverage (EBIT / interest; 999 if no debt)', '=IF(C36>0,C35/C36,999)', F_X),
-                    (38, 'Synthetic credit rating', '=INDEX($A$60:$A$74,MATCH(C37,$B$60:$B$74,1))', None),
-                    (39, 'Credit spread over risk-free', '=INDEX($C$60:$C$74,MATCH(C37,$B$60:$B$74,1))', F_PCT2)]:
+                    (38, 'Synthetic credit rating', '=INDEX($A$71:$A$85,MATCH(C37,$B$71:$B$85,1))', None),
+                    (39, 'Credit spread over risk-free', '=INDEX($C$71:$C$85,MATCH(C37,$B$71:$B$85,1))', F_PCT2)]:
     lab(wsW, r, l)
     put(wsW, f'C{r}', f, fm)
 
-band(wsW, 41, '5. WACC BY SCENARIO')
-for c, t in zip('CDEF', ['Bear', 'Base', 'Bull', 'Live']):
-    cell = wsW[f'{c}41']
-    cell.value = t
-    cell.alignment = Alignment(horizontal='right')
-lines = [
-    (43, 'Risk-free rate (FY26E, Macro_Scenarios)', lambda c, s: f'=Macro_Scenarios!F{M["rf"][s]}', F_PCT2),
-    (44, '(+) Beta x ERP', lambda c, s: '=$C$32*$C$27', F_PCT2),
-    (45, '(+) Country risk premium', lambda c, s: '=$C$28', F_PCT2),
-    (46, '(+) Size / company-specific premium', lambda c, s: '=$C$29', F_PCT2),
-    (47, '(+) Scenario risk-premium adjustment', lambda c, s: f'=Macro_Scenarios!$C${M["prem"][s]}', F_PCT2),
-    (48, 'Cost of equity (Ke)', lambda c, s: f'=SUM({c}43:{c}47)', F_PCT2),
-    (49, 'Pre-tax cost of debt (Rf + synthetic spread)', lambda c, s: f'={c}43+$C$39', F_PCT2),
-    (50, 'Marginal tax rate', lambda c, s: '=$C$30', F_PCT),
-    (51, 'After-tax cost of debt  Kd x (1 - T)', lambda c, s: f'={c}49*(1-{c}50)', F_PCT2),
-    (52, 'Equity weight E/V', lambda c, s: '=$C$23', F_PCT),
-    (53, 'Debt weight D/V', lambda c, s: '=$C$22', F_PCT),
-    (54, 'WACC', lambda c, s: f'={c}48*{c}52+{c}51*{c}53', F_PCT2),
-]
-for r, l, fn, fm in lines:
-    lab(wsW, r, l, bold=(r in (48, 54)))
-    for c, s in zip('CDE', SK):
-        put(wsW, f'{c}{r}', fn(c, s), fm, bold=(r in (48, 54)))
-    put(wsW, f'F{r}', f'=CHOOSE(Assumptions!$C$6,C{r},D{r},E{r})', fm, bold=True)
-assert WACC_ROW == 54
+band(wsW, 41, '5. WACC BY SCENARIO (risk-free rate and scenario premium differ; everything else is common)', c2='N')
+lab(wsW, 42, 'Scenario', bold=True)
+for c, t in zip('CDEFGHIJKLMN', ['Risk-free', 'Beta x ERP', 'Country risk', 'Size / CSRP', 'Scenario adj.', 'Cost of equity',
+                                  'Pre-tax Kd', 'Tax rate', 'After-tax Kd', 'E/V', 'D/V', 'WACC']):
+    put(wsW, f'{c}42', t, kind='label', bold=True, align='right')
+for i, s in enumerate(SK):
+    r = 43 + i
+    put(wsW, f'A{r}', f'=Assumptions!$N${5 + i}', None, color=BLACK)
+    fs = {'C': (f'=Macro_Scenarios!F{M["rf"][s]}', F_PCT2), 'D': ('=$C$32*$C$27', F_PCT2), 'E': ('=$C$28', F_PCT2), 'F': ('=$C$29', F_PCT2),
+          'G': (f'=Macro_Scenarios!$C${M["prem"][s]}', F_PCT2), 'H': (f'=SUM(C{r}:G{r})', F_PCT2), 'I': (f'=C{r}+$C$39', F_PCT2),
+          'J': ('=$C$30', F_PCT), 'K': (f'=I{r}*(1-J{r})', F_PCT2), 'L': ('=$C$23', F_PCT), 'M': ('=$C$22', F_PCT),
+          'N': (f'=H{r}*L{r}+K{r}*M{r}', F_PCT2)}
+    for c, (f, fm) in fs.items():
+        put(wsW, f'{c}{r}', f, fm, bold=(c in 'HN'))
+LIVE_R = 43 + N
+assert f'WACC!$N${LIVE_R}' == WACC_LIVE
+lab(wsW, LIVE_R, '\u25ba Live (active scenario)', bold=True)
+for c in 'CDEFGHIJKLMN':
+    put(wsW, f'{c}{LIVE_R}', f'=INDEX({c}43:{c}{42 + N},Assumptions!$C$6)', F_PCT if c in 'JLM' else F_PCT2, bold=True)
 
-band(wsW, 57, '6. SYNTHETIC RATING TABLE (illustrative large-cap bands - refresh from Damodaran / agency data)')
+RT0 = LIVE_R + 3
+band(wsW, RT0, '6. SYNTHETIC RATING TABLE (illustrative large-cap bands - refresh from Damodaran / agency data)')
 for c, t in zip('ABC', ['Rating', 'Coverage \u2265', 'Spread']):
-    put(wsW, f'{c}59', t, kind='label', bold=True, align='left' if c == 'A' else 'right')
+    put(wsW, f'{c}{RT0 + 1}', t, kind='label', bold=True, align='left' if c == 'A' else 'right')
 rt = [('D', -100000, 0.1400), ('C', 0.20, 0.1100), ('CC', 0.65, 0.0885), ('CCC', 0.80, 0.0820), ('B-', 1.25, 0.0515),
       ('B', 1.50, 0.0421), ('B+', 1.75, 0.0351), ('BB', 2.00, 0.0240), ('BB+', 2.25, 0.0200), ('BBB', 2.50, 0.0156),
       ('A-', 3.00, 0.0122), ('A', 4.25, 0.0108), ('A+', 5.50, 0.0098), ('AA', 6.50, 0.0078), ('AAA', 8.50, 0.0063)]
+assert RT0 + 2 == 71
 for i, (rg, lo, sp) in enumerate(rt):
-    r = 60 + i
+    r = RT0 + 2 + i
     put(wsW, f'A{r}', rg, kind='input')
     put(wsW, f'B{r}', float(lo), '0.00', fill=YEL)
     put(wsW, f'C{r}', sp, F_PCT2, fill=YEL)
@@ -702,7 +767,7 @@ put(wsD, 'C17', 'Yes', kind='input', fill=YEL)
 dv_list(wsD, 'C17', ['Yes', 'No'])
 lab(wsD, 18, 'Discount-period shift (0.5 if mid-year)', 'years')
 put(wsD, 'C18', '=IF(C17="Yes",0.5,0)', '0.0')
-for r, l, f, fm in [(19, 'WACC (live scenario)', '=WACC!F54', F_PCT2), (20, 'Terminal growth rate (g)', '=Assumptions!C33', F_PCT2),
+for r, l, f, fm in [(19, 'WACC (live scenario)', f'={WACC_LIVE}', F_PCT2), (20, 'Terminal growth rate (g)', '=Assumptions!C33', F_PCT2),
                     (21, 'Exit EV / EBITDA multiple', '=Assumptions!C34', F_X), (22, 'SBC treated as cash cost?', '=Assumptions!C13', None),
                     (23, 'Weight on Gordon Growth in blended value', '=Assumptions!C35', F_PCT)]:
     lab(wsD, r, l)
@@ -852,44 +917,32 @@ for r, l, f, fm in cv:
 # 7. SCENARIO_VALUATION
 # =====================================================================================
 wsS = WS['Scenario_Valuation']
-title(wsS, 'Scenario_Valuation - Bear / Base / Bull Valuation Matrix (all cases live simultaneously)')
-put(wsS, 'A2', '="All figures in "&Assumptions!C10&" except per-share data | Each case is a full re-computation below the matrix - no data tables, no toggle flipping."',
+title(wsS, f'Scenario_Valuation - {N}-Scenario Valuation Matrix (all cases live simultaneously)')
+put(wsS, 'A2', '="All figures in "&Assumptions!C10&" except per-share data | Every scenario is fully re-computed in the blocks below the matrix - no data tables, no toggle flipping."',
     kind='calc', italic=True)
-band(wsS, 4, 'SCENARIO PROBABILITIES')
-for c, t in zip('CDEF', ['Bear', 'Base', 'Bull', 'Total']):
-    wsS[f'{c}4'].value = t
-    wsS[f'{c}4'].alignment = Alignment(horizontal='right')
-lab(wsS, 5, 'Probability weight', '%', bold=True)
-for c, v in zip('CDE', [0.25, 0.50, 0.25]):
-    put(wsS, f'{c}5', v, F_PCT, fill=YEL)
-put(wsS, 'F5', '=SUM(C5:E5)', F_PCT, bold=True)
-
-band(wsS, 8, 'VALUATION MATRIX')
-for c, t in zip('CDEF', ['Bear', 'Base', 'Bull', 'Prob-weighted']):
-    wsS[f'{c}8'].value = t
-    wsS[f'{c}8'].alignment = Alignment(horizontal='right')
-
-SVB = {}
-blk = 30
-for s in SK:
-    SVB[s] = blk
-    blk += 29
-SV_END = blk
+band(wsS, 4, 'VALUATION MATRIX - one row per scenario (probabilities are inputs; must total 100%)', c2='Q')
+lab(wsS, 5, 'Scenario', bold=True)
+for c, t in zip('CDEFGHIJKLMNOPQ', ['Probability', 'Revenue CAGR', 'FY30E EBITDA mgn', 'FY30E UFCF', 'WACC', 'EV - Gordon', 'EV - Exit',
+                                    'EV - Blended', 'Equity value', 'Price - Gordon', 'Price - Exit', 'Price - Blended', 'Upside/(down)',
+                                    'TV % of EV', 'Active']):
+    put(wsS, f'{c}5', t, kind='label', bold=True, align='right')
+SV_FIRST, SV_LAST = 6, 5 + N
+SV_PW, SV_TOT = SV_LAST + 1, SV_LAST + 2
+SVB = {s: SV_TOT + 3 + 29 * i for i, s in enumerate(SK)}
+SV_END = SV_TOT + 3 + 29 * N
 
 
-def sblock(s, b, wc):
-    subband(wsS, b, f'{s.upper()} CASE - CALCULATION BLOCK  (links to Assumptions {s.title()} rows)', None)
+def sblock(i, s, b):
+    subband(wsS, b, f'{SC[i].upper()} - CALCULATION BLOCK  (links to the {SC[i]} rows on Assumptions)', None)
     yr_labels(wsS, b, 'Assumptions!$C$12', cols=['E'] + FC + ['K'], band_row=False)
     names = ['Revenue growth', 'Revenue', 'Gross margin', 'EBITDA margin', 'EBITDA', 'D&A', 'EBIT', 'Cash taxes on EBIT', 'NOPAT',
              'Stock-based compensation', 'CapEx (maintenance + growth)', 'Net working capital', 'Increase in NWC', 'UFCF',
              'Discount factor', 'PV of UFCF']
-    for i, nme in enumerate(names):
-        lab(wsS, b + 1 + i, nme)
-    g = lambda c: f'{c}{b + 1}'
+    for k, nme in enumerate(names):
+        lab(wsS, b + 1 + k, nme)
     for c in ['E'] + FC + ['K']:
         p = pv(c)
-        isF = c in FC
-        isK = c == 'K'
+        isF, isK = c in FC, c == 'K'
         if isF:
             put(wsS, f'{c}{b + 1}', f'=Assumptions!{c}{A["rg"][s]}', F_PCT)
             put(wsS, f'{c}{b + 3}', f'=Assumptions!{c}{A["gm"][s]}', F_PCT)
@@ -920,7 +973,7 @@ def sblock(s, b, wc):
         put(wsS, f'{c}{b + 13}', f'={c}{b + 12}-{p}{b + 12}', F_NUM)
         put(wsS, f'{c}{b + 14}', f'={c}{b + 9}+{c}{b + 6}-{c}{b + 11}-{c}{b + 13}-{c}{b + 10}*IF(Assumptions!$C$13="Yes",1,0)', F_NUM, bold=True)
     sc = [
-        (b + 17, 'WACC (WACC tab)', f'=WACC!{wc}$54', F_PCT2),
+        (b + 17, 'WACC (WACC tab)', f'=WACC!$N${43 + i}', F_PCT2),
         (b + 18, 'Sum of PV of explicit UFCF', f'=SUM(F{b + 16}:J{b + 16})', F_NUM),
         (b + 19, 'Terminal value - Gordon growth', f'=K{b + 14}/(C{b + 17}-Assumptions!$C$33)', F_NUM),
         (b + 20, 'PV of terminal value - Gordon', f'=C{b + 19}/(1+C{b + 17})^DCF_Valuation!$J$43', F_NUM),
@@ -935,63 +988,39 @@ def sblock(s, b, wc):
         put(wsS, f'C{r}', f, fm, bold=(r == b + 25))
 
 
-for s, wc in zip(SK, 'CDE'):
-    sblock(s, SVB[s], wc)
-
-mx = [
-    (9, 'Revenue CAGR (last historical year to FY30E)', lambda b: f'=(J{b + 2}/E{b + 2})^(1/COUNT(F{b + 2}:J{b + 2}))-1', F_PCT),
-    (10, 'FY30E EBITDA margin', lambda b: f'=J{b + 4}', F_PCT),
-    (11, 'FY30E UFCF', lambda b: f'=J{b + 14}', F_NUM),
-    (12, 'WACC', lambda b: f'=C{b + 17}', F_PCT2),
-    (13, 'Terminal growth rate (g)', lambda b: '=Assumptions!$C$33', F_PCT2),
-    (14, 'Enterprise value - Gordon Growth', lambda b: f'=C{b + 23}', F_NUM),
-    (15, 'Enterprise value - Exit Multiple', lambda b: f'=C{b + 24}', F_NUM),
-    (16, 'Implied enterprise value - Blended', lambda b: f'=C{b + 25}', F_NUM),
-    (17, 'Net claims: cash - debt - preferred - minority', lambda b: '=DCF_Valuation!$C$61+DCF_Valuation!$C$62+DCF_Valuation!$C$63', F_NUM),
-    (18, 'Implied equity value - Blended', None, F_NUM),
-    (19, 'Diluted shares (mm)', lambda b: f'=DCF_Valuation!$C${DIL_ROW}', F_NUM),
-    (20, 'Implied share price - Gordon Growth', None, F_PX),
-    (21, 'Implied share price - Exit Multiple', None, F_PX),
-    (22, 'Implied share price - Blended', None, F_PX),
-    (23, 'Current share price', lambda b: '=Assumptions!$C$17', F_PX),
-    (24, 'Upside / (downside) - Blended', None, F_PCT),
-    (25, 'Terminal value % of EV - Blended', lambda b: f'=1-C{b + 18}/C{b + 25}', F_PCT),
-]
-for r, l, fn, fm in mx:
-    lab(wsS, r, l, bold=(r in (16, 22, 24)))
-    for c, s in zip('CDE', SK):
-        b = SVB[s]
-        if r == 18:
-            f = f'={c}16+{c}17'
-        elif r == 20:
-            f = f'=({c}14+{c}17)/{c}19'
-        elif r == 21:
-            f = f'=({c}15+{c}17)/{c}19'
-        elif r == 22:
-            f = f'={c}18/{c}19'
-        elif r == 24:
-            f = f'={c}22/{c}23-1'
-        elif r == 25:
-            f = f'=1-C{b + 18}/C{b + 25}'.replace('C', c, 0)
-        else:
-            f = fn(b)
-        if r == 25:
-            f = f'=1-$C${b + 18}/$C${b + 25}'
-        if r in (9, 10, 11):
-            f = fn(b)
-        put(wsS, f'{c}{r}', f, fm, bold=(r in (16, 22, 24)))
-    if r in (9, 10, 11, 12, 14, 15, 16, 18, 20, 21, 22, 25):
-        put(wsS, f'F{r}', f'=SUMPRODUCT($C$5:$E$5,C{r}:E{r})', fm, bold=(r in (16, 22)))
-    elif r == 13:
-        put(wsS, f'F{r}', f'=C{r}', fm)
-    elif r == 17 or r == 19 or r == 23:
-        put(wsS, f'F{r}', f'=C{r}', fm)
-    elif r == 24:
-        put(wsS, f'F{r}', '=F22/F23-1', fm, bold=True)
-lab(wsS, 26, 'Active in model (Assumptions!C5)')
-for c, s in zip('CDE', SC):
-    put(wsS, f'{c}26', f'=IF(Assumptions!$C$5="{s}","ACTIVE","")', None, bold=True, align='right')
-wsS.freeze_panes = 'C9'
+NC = '(DCF_Valuation!$C$61+DCF_Valuation!$C$62+DCF_Valuation!$C$63)'
+for i, s in enumerate(SK):
+    b = SVB[s]
+    sblock(i, s, b)
+    r = SV_FIRST + i
+    put(wsS, f'A{r}', f'=Assumptions!$N${5 + i}', None, color=BLACK)
+    put(wsS, f'C{r}', SCEN[i][4] / 100.0, F_PCT, fill=YEL)
+    put(wsS, f'D{r}', f'=(J{b + 2}/E{b + 2})^(1/COUNT(F{b + 2}:J{b + 2}))-1', F_PCT)
+    put(wsS, f'E{r}', f'=J{b + 4}', F_PCT)
+    put(wsS, f'F{r}', f'=J{b + 14}', F_NUM)
+    put(wsS, f'G{r}', f'=C{b + 17}', F_PCT2)
+    put(wsS, f'H{r}', f'=C{b + 23}', F_NUM)
+    put(wsS, f'I{r}', f'=C{b + 24}', F_NUM)
+    put(wsS, f'J{r}', f'=C{b + 25}', F_NUM, bold=True)
+    put(wsS, f'K{r}', f'=J{r}+{NC}', F_NUM)
+    put(wsS, f'L{r}', f'=(H{r}+{NC})/DCF_Valuation!$C${DIL_ROW}', F_PX)
+    put(wsS, f'M{r}', f'=(I{r}+{NC})/DCF_Valuation!$C${DIL_ROW}', F_PX)
+    put(wsS, f'N{r}', f'=K{r}/DCF_Valuation!$C${DIL_ROW}', F_PX, bold=True)
+    put(wsS, f'O{r}', f'=N{r}/Assumptions!$C$17-1', F_PCT)
+    put(wsS, f'P{r}', f'=1-C{b + 18}/C{b + 25}', F_PCT)
+    put(wsS, f'Q{r}', f'=IF(Assumptions!$C$5=$A{r},"ACTIVE","")', None, bold=True, align='right')
+lab(wsS, SV_PW, 'Probability-weighted expected value', bold=True)
+for c, fm in zip('DEFGHIJKLMNP', [F_PCT, F_PCT, F_NUM, F_PCT2, F_NUM, F_NUM, F_NUM, F_NUM, F_PX, F_PX, F_PX, F_PCT]):
+    put(wsS, f'{c}{SV_PW}', f'=SUMPRODUCT($C${SV_FIRST}:$C${SV_LAST},{c}{SV_FIRST}:{c}{SV_LAST})', fm, bold=True)
+put(wsS, f'O{SV_PW}', f'=N{SV_PW}/Assumptions!$C$17-1', F_PCT, bold=True)
+put(wsS, f'C{SV_PW}', f'=SUM(C{SV_FIRST}:C{SV_LAST})', F_PCT, bold=True)
+lab(wsS, SV_TOT, 'Total probability (must equal 100%)')
+put(wsS, f'C{SV_TOT}', f'=SUM(C{SV_FIRST}:C{SV_LAST})', F_PCT, bold=True)
+lab(wsS, SV_TOT + 1, 'Current share price (colour-scale midpoint)')
+put(wsS, f'C{SV_TOT + 1}', '=Assumptions!$C$17', F_PX)
+wsS.conditional_formatting.add(f'N{SV_FIRST}:N{SV_LAST}', ColorScaleRule(start_type='min', start_color='F8696B', mid_type='formula',
+                               mid_value=f'$C${SV_TOT + 1}', mid_color='FFEB84', end_type='max', end_color='63BE7B'))
+wsS.freeze_panes = 'C6'
 
 # =====================================================================================
 # 8. SENSITIVITY_ANALYSIS
@@ -1002,7 +1031,7 @@ put(wsT, 'A2', '="Implied share price in "&Assumptions!C9&" | Colour scale: gree
     kind='calc', italic=True)
 band(wsT, 4, 'BASE INPUTS (LIVE LINKS - do not overwrite)', c2='P')
 si = [
-    (5, 'WACC (live scenario)', '=WACC!F54', F_PCT2), (6, 'Terminal growth rate (g)', '=Assumptions!C33', F_PCT2),
+    (5, 'WACC (live scenario)', f'={WACC_LIVE}', F_PCT2), (6, 'Terminal growth rate (g)', '=Assumptions!C33', F_PCT2),
     (7, 'Exit EV / EBITDA multiple', '=Assumptions!C34', F_X), (8, 'Current share price', '=Assumptions!C17', F_PX),
     (9, 'Diluted shares (mm)', f'=DCF_Valuation!C{DIL_ROW}', F_NUM),
     (10, 'Net claims (cash - debt - pref - minority)', '=DCF_Valuation!C61+DCF_Valuation!C62+DCF_Valuation!C63', F_NUM),
@@ -1116,16 +1145,16 @@ SENS_CENTER = {'t1': 'E32', 't2': 'E40', 't3': 'E48'}
 # ---- DCF audit block (needs all sheets) -------------------------------------------------
 band(wsD, 4, 'AUDIT / ERROR CHECK BLOCK')
 err_formula = ('=SUMPRODUCT(--ISERROR(Assumptions!A1:K%d))+SUMPRODUCT(--ISERROR(Macro_Scenarios!A1:K%d))'
-               '+SUMPRODUCT(--ISERROR(Operating_Model!A1:K64))+SUMPRODUCT(--ISERROR(WACC!A1:K76))'
-               '+SUMPRODUCT(--ISERROR(DCF_Valuation!A13:K96))+SUMPRODUCT(--ISERROR(Scenario_Valuation!A1:K%d))'
+               '+SUMPRODUCT(--ISERROR(Operating_Model!A1:K64))+SUMPRODUCT(--ISERROR(WACC!A1:N90))'
+               '+SUMPRODUCT(--ISERROR(DCF_Valuation!A13:K96))+SUMPRODUCT(--ISERROR(Scenario_Valuation!A1:Q%d))'
                '+SUMPRODUCT(--ISERROR(Sensitivity_Analysis!A1:P82))') % (A['_end'] + 2, mr + 12, SV_END)
 checks = [
     (5, 'No formula errors (REF / DIV0 / VALUE / NAME) anywhere in the model (error count)', '=IF(D5=0,"OK","ERROR")', err_formula, '0'),
-    (6, 'Scenario probabilities sum to 100% (total)', '=IF(ABS(D6-1)<0.000001,"OK","ERROR")', '=Scenario_Valuation!F5', F_PCT),
+    (6, 'Scenario probabilities sum to 100% (total)', '=IF(ABS(D6-1)<0.000001,"OK","ERROR")', f'=Scenario_Valuation!C{SV_TOT}', F_PCT),
     (7, 'WACC > terminal growth rate g (spread)', '=IF(C19>C20,"OK","ERROR")', '=C19-C20', F_PCT2),
     (8, 'Terminal-year convergence: implied RONIC vs. WACC (spread)', '=C96', '=C94', F_PCT2),
     (9, 'Scenario block ties to live DCF (price difference, active case)',
-     '=IF(ABS(D9)<0.005,"OK","ERROR")', '=E66-INDEX(Scenario_Valuation!C22:E22,Assumptions!C6)', '0.0000'),
+     '=IF(ABS(D9)<0.005,"OK","ERROR")', f'=E66-INDEX(Scenario_Valuation!N{SV_FIRST}:N{SV_LAST},Assumptions!C6)', '0.0000'),
     (10, 'Sensitivity centre cells tie to DCF (max abs price difference)',
      '=IF(ABS(D10)<0.005,"OK","ERROR")',
      '=MAX(ABS(Sensitivity_Analysis!E32-C66),ABS(Sensitivity_Analysis!E40-D66),ABS(Sensitivity_Analysis!E48-E66))', '0.0000'),
@@ -1149,7 +1178,7 @@ wsB.row_dimensions[1].height = 24
 put(wsB, 'A2', '="All figures in "&Assumptions!C10&" except per-share data | Valuation date: "&TEXT(Assumptions!C11,"mmm d, yyyy")&" | Active scenario: "&Assumptions!C5',
     kind='calc', italic=True)
 band(wsB, 4, 'MODEL INTEGRITY - AUDIT BLOCK', c2='H')
-for i, r in enumerate(range(5, 12)):
+for r in range(5, 12):
     put(wsB, f'A{r}', f'=DCF_Valuation!A{r}', None, bold=(r == 11), color=BLACK)
     put(wsB, f'C{r}', f'=DCF_Valuation!C{r}', None, bold=True, align='right')
 band(wsB, 13, 'VALUATION SUMMARY (ACTIVE SCENARIO)', c2='H')
@@ -1181,25 +1210,30 @@ kp = [
 for r, l, f, fm in kp:
     lab(wsB, r, l)
     put(wsB, f'C{r}', f, fm)
-band(wsB, 39, 'VALUATION FOOTBALL FIELD SUMMARY (Bear / Base / Bull ranges and sensitivity ranges)', c2='H')
+
+band(wsB, 39, 'VALUATION FOOTBALL FIELD SUMMARY (Bear / Base / Bull, all scenarios and sensitivity ranges)', c2='H')
 for c, t in zip('CDEFGH', ['Price low', 'Price mid', 'Price high', 'EV low', 'EV mid', 'EV high']):
     put(wsB, f'{c}40', t, kind='label', bold=True, align='right')
 SVn = 'Scenario_Valuation!'
 nc = 'DCF_Valuation!$C$61+DCF_Valuation!$C$62+DCF_Valuation!$C$63'
-ff = [
-    (41, 'DCF - Gordon Growth (Bear | Base | Bull)', f'=MIN({SVn}C20:E20)', f'={SVn}D20', f'=MAX({SVn}C20:E20)',
-     f'=MIN({SVn}C14:E14)', f'={SVn}D14', f'=MAX({SVn}C14:E14)'),
-    (42, 'DCF - Exit Multiple (Bear | Base | Bull)', f'=MIN({SVn}C21:E21)', f'={SVn}D21', f'=MAX({SVn}C21:E21)',
-     f'=MIN({SVn}C15:E15)', f'={SVn}D15', f'=MAX({SVn}C15:E15)'),
-    (43, 'DCF - Blended (Bear | Base | Bull)', f'=MIN({SVn}C22:E22)', f'={SVn}D22', f'=MAX({SVn}C22:E22)',
-     f'=MIN({SVn}C16:E16)', f'={SVn}D16', f'=MAX({SVn}C16:E16)'),
-]
-sens_rows = [(44, 'Sensitivity: WACC x terminal growth', 'C30:G34', 'E32'), (45, 'Sensitivity: WACC x exit multiple', 'C38:G42', 'E40'),
-             (46, 'Sensitivity: revenue growth x terminal margin', 'C46:G50', 'E48')]
-for r, l, a, b_, c_, d, e, f_ in ff:
+r_bear, r_base, r_bull = SV_FIRST, SV_FIRST + 1, SV_FIRST + 2
+
+
+def srng(col, a, b):
+    return f'{SVn}{col}{a}:{col}{b}'
+
+
+ffrows = [(41, 'DCF - Gordon Growth (Bear | Base | Bull)', 'L', 'H', r_bull), (42, 'DCF - Exit Multiple (Bear | Base | Bull)', 'M', 'I', r_bull),
+          (43, 'DCF - Blended (Bear | Base | Bull)', 'N', 'J', r_bull),
+          (44, f'DCF - Blended, all {N} scenarios (min | Base | max)', 'N', 'J', SV_LAST)]
+for r, l, pc, ec, last in ffrows:
     lab(wsB, r, l)
-    for col, fm_, v in zip('CDEFGH', [F_PX] * 3 + [F_NUM] * 3, [a, b_, c_, d, e, f_]):
+    for col, fm_, v in zip('CDEFGH', [F_PX] * 3 + [F_NUM] * 3,
+                           [f'=MIN({srng(pc, SV_FIRST, last)})', f'={SVn}{pc}{r_base}', f'=MAX({srng(pc, SV_FIRST, last)})',
+                            f'=MIN({srng(ec, SV_FIRST, last)})', f'={SVn}{ec}{r_base}', f'=MAX({srng(ec, SV_FIRST, last)})']):
         put(wsB, f'{col}{r}', v, fm_)
+sens_rows = [(45, 'Sensitivity: WACC x terminal growth', 'C30:G34', 'E32'), (46, 'Sensitivity: WACC x exit multiple', 'C38:G42', 'E40'),
+             (47, 'Sensitivity: revenue growth x terminal margin', 'C46:G50', 'E48')]
 for r, l, rng, ctr in sens_rows:
     lab(wsB, r, l)
     put(wsB, f'C{r}', f'=MIN(Sensitivity_Analysis!{rng})', F_PX)
@@ -1207,29 +1241,44 @@ for r, l, rng, ctr in sens_rows:
     put(wsB, f'E{r}', f'=MAX(Sensitivity_Analysis!{rng})', F_PX)
     for pc, ec in zip('CDE', 'FGH'):
         put(wsB, f'{ec}{r}', f'={pc}{r}*DCF_Valuation!$C${DIL_ROW}-({nc})', F_NUM)
-lab(wsB, 47, 'Probability-weighted expected value', bold=True)
-put(wsB, 'D47', f'={SVn}F22', F_PX, bold=True)
-put(wsB, 'G47', f'={SVn}F16', F_NUM, bold=True)
-lab(wsB, 48, 'Current share price (reference line)')
-put(wsB, 'D48', '=Assumptions!C17', F_PX)
-band(wsB, 50, 'CHART DATA (live links)', c2='H')
-lab(wsB, 51, 'Fiscal year')
-lab(wsB, 52, 'Revenue', 'units')
-lab(wsB, 53, 'EBITDA margin', '%')
-lab(wsB, 54, 'UFCF', 'units')
-lab(wsB, 55, 'PV of UFCF', 'units')
-for i, c in enumerate(['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']):
-    oc = c
-    put(wsB, f'{c}51', f'={OMr}{oc}4', None, bold=True, align='right')
-    put(wsB, f'{c}52', f'={OMr}{oc}11', F_NUM)
-    put(wsB, f'{c}53', f'={OMr}{oc}19', F_PCT)
+lab(wsB, 48, 'Probability-weighted expected value (all scenarios)', bold=True)
+put(wsB, 'D48', f'={SVn}N{SV_PW}', F_PX, bold=True)
+put(wsB, 'G48', f'={SVn}J{SV_PW}', F_NUM, bold=True)
+lab(wsB, 49, 'Current share price (reference line)')
+put(wsB, 'D49', '=Assumptions!C17', F_PX)
+
+# ---- all-scenario summary table
+ST = 51
+band(wsB, ST, f'ALL-SCENARIO SUMMARY ({N} scenarios, blended DCF)', c2='H')
+for c, t in zip('CDEFG', ['Probability', 'Price', 'Upside/(down)', 'WACC', 'Enterprise value']):
+    put(wsB, f'{c}{ST + 1}', t, kind='label', bold=True, align='right')
+lab(wsB, ST + 1, 'Scenario', bold=True)
+T0 = ST + 2
+for i in range(N):
+    r, sr = T0 + i, SV_FIRST + i
+    put(wsB, f'A{r}', f'={SVn}A{sr}', None, color=BLACK)
+    for c, sc_, fm in zip('CDEFG', ['C', 'N', 'O', 'G', 'J'], [F_PCT, F_PX, F_PCT, F_PCT2, F_NUM]):
+        put(wsB, f'{c}{r}', f'={SVn}{sc_}{sr}', fm)
+T1 = T0 + N - 1
+wsB.conditional_formatting.add(f'D{T0}:D{T1}', ColorScaleRule(start_type='min', start_color='F8696B', mid_type='formula', mid_value='$D$49',
+                                                             mid_color='FFEB84', end_type='max', end_color='63BE7B'))
+
+# ---- chart data
+CD = T1 + 2
+band(wsB, CD, 'CHART DATA (live links)', c2='H')
+rY, rR, rM, rU, rP, rE, rT = CD + 1, CD + 2, CD + 3, CD + 4, CD + 5, CD + 6, CD + 7
+for r, l, u in [(rY, 'Fiscal year', None), (rR, 'Revenue', 'units'), (rM, 'EBITDA margin', '%'), (rU, 'UFCF', 'units'), (rP, 'PV of UFCF', 'units'),
+                (rE, 'PV of explicit-period UFCF (blended bridge)', None), (rT, 'PV of terminal value (blended bridge)', None)]:
+    lab(wsB, r, l, u)
+for c in ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']:
+    put(wsB, f'{c}{rY}', f'={OMr}{c}4', None, bold=True, align='right')
+    put(wsB, f'{c}{rR}', f'={OMr}{c}11', F_NUM)
+    put(wsB, f'{c}{rM}', f'={OMr}{c}19', F_PCT)
     if c in FC:
-        put(wsB, f'{c}54', f'=DCF_Valuation!{oc}37', F_NUM)
-        put(wsB, f'{c}55', f'=DCF_Valuation!{oc}45', F_NUM)
-lab(wsB, 56, 'PV of explicit-period UFCF (blended bridge)')
-put(wsB, 'C56', '=DCF_Valuation!E58', F_NUM)
-lab(wsB, 57, 'PV of terminal value (blended bridge)')
-put(wsB, 'C57', '=DCF_Valuation!E59', F_NUM)
+        put(wsB, f'{c}{rU}', f'=DCF_Valuation!{c}37', F_NUM)
+        put(wsB, f'{c}{rP}', f'=DCF_Valuation!{c}45', F_NUM)
+put(wsB, f'C{rE}', '=DCF_Valuation!E58', F_NUM)
+put(wsB, f'C{rT}', '=DCF_Valuation!E59', F_NUM)
 
 
 def chart_polish(ch, ttl, xt=None, yt=None, axes=True):
@@ -1251,15 +1300,15 @@ def chart_polish(ch, ttl, xt=None, yt=None, axes=True):
             ch.y_axis.title.overlay = False
 
 
-cats_all = Reference(wsB, min_col=3, max_col=10, min_row=51)
+cats_all = Reference(wsB, min_col=3, max_col=10, min_row=rY)
 bar = BarChart()
 bar.type = 'col'
-bar.series.append(Series(Reference(wsB, min_col=3, max_col=10, min_row=52), title='Revenue'))
+bar.series.append(Series(Reference(wsB, min_col=3, max_col=10, min_row=rR), title='Revenue'))
 bar.set_categories(cats_all)
 bar.y_axis.numFmt = '#,##0'
 bar.y_axis.majorGridlines = None
 line = LineChart()
-line.series.append(Series(Reference(wsB, min_col=3, max_col=10, min_row=53), title='EBITDA margin (RHS)'))
+line.series.append(Series(Reference(wsB, min_col=3, max_col=10, min_row=rM), title='EBITDA margin (RHS)'))
 line.set_categories(cats_all)
 line.y_axis.axId = 200
 line.y_axis.numFmt = '0%'
@@ -1269,21 +1318,22 @@ from openpyxl.chart.marker import Marker
 line.series[0].marker = Marker(symbol='circle')
 chart_polish(bar, 'Revenue & EBITDA Margin Trajectory (FY23A-FY30E)', None, 'Revenue')
 bar += line
-wsB.add_chart(bar, 'A60')
+CH = rT + 3
+wsB.add_chart(bar, f'A{CH}')
 
-cats_f = Reference(wsB, min_col=6, max_col=10, min_row=51)
+cats_f = Reference(wsB, min_col=6, max_col=10, min_row=rY)
 b2 = BarChart()
 b2.type = 'col'
-b2.series.append(Series(Reference(wsB, min_col=6, max_col=10, min_row=54), title='UFCF'))
-b2.series.append(Series(Reference(wsB, min_col=6, max_col=10, min_row=55), title='PV of UFCF'))
+b2.series.append(Series(Reference(wsB, min_col=6, max_col=10, min_row=rU), title='UFCF'))
+b2.series.append(Series(Reference(wsB, min_col=6, max_col=10, min_row=rP), title='PV of UFCF'))
 b2.set_categories(cats_f)
 b2.y_axis.numFmt = '#,##0'
 chart_polish(b2, 'Unlevered Free Cash Flow Build & Present Value (Explicit Period)', None, 'Units')
-wsB.add_chart(b2, 'A80')
+wsB.add_chart(b2, f'A{CH + 20}')
 
 pie = PieChart()
-pie.add_data(Reference(wsB, min_col=3, min_row=56, max_row=57), titles_from_data=False)
-pie.set_categories(Reference(wsB, min_col=1, min_row=56, max_row=57))
+pie.add_data(Reference(wsB, min_col=3, min_row=rE, max_row=rT), titles_from_data=False)
+pie.set_categories(Reference(wsB, min_col=1, min_row=rE, max_row=rT))
 pie.dataLabels = DataLabelList()
 pie.dataLabels.showPercent = True
 pie.dataLabels.showVal = False
@@ -1291,9 +1341,20 @@ pie.dataLabels.showCatName = False
 pie.dataLabels.showSerName = False
 pie.dataLabels.showLeaderLines = False
 chart_polish(pie, 'Enterprise Value Composition: PV of Explicit UFCF vs. PV of Terminal Value', axes=False)
-pie.height = 9
-wsB.add_chart(pie, 'A100')
+wsB.add_chart(pie, f'A{CH + 40}')
+
+b4 = BarChart()
+b4.type = 'bar'
+b4.series.append(Series(Reference(wsB, min_col=4, min_row=T0, max_row=T1), title='Implied value per share (blended)'))
+b4.set_categories(Reference(wsB, min_col=1, min_row=T0, max_row=T1))
+b4.y_axis.numFmt = '#,##0.00'
+b4.x_axis.scaling.orientation = 'maxMin'
+chart_polish(b4, f'Implied Value per Share by Scenario ({N} scenarios)', None, 'Value per share')
+b4.height = 15
+b4.legend = None
+wsB.add_chart(b4, f'A{CH + 60}')
 wsB.freeze_panes = 'A4'
+
 
 # =====================================================================================
 # FORMATTING PASS: status colouring, auto-fit, grid, save
@@ -1347,6 +1408,11 @@ for n, rows_ in [('Assumptions', range(1, 4))]:
     pass
 wsA.freeze_panes = 'C4'
 wsM.freeze_panes = 'C5'
+# remove title + legend lines (rows 1-2) from every sheet
+for _ws in WS.values():
+    _ws['A1'].value = None
+    _ws['A2'].value = None
+    _ws.row_dimensions[1].height = None
 wb.properties.title = 'DCF Valuation Template'
 if globals().get('HOOK'):
     HOOK(wb, globals())   # lets the app pre-fill inputs for a ticker
